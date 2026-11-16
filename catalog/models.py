@@ -24,6 +24,7 @@ class BloggerProfile(models.Model):
     fraud_status = models.CharField(max_length=20, default='unverified')
     fraud_notes = models.TextField(blank=True)
     stats_updated_at = models.DateTimeField(null=True, blank=True)
+    quality_checked_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         indexes = [models.Index(fields=['category', 'price']), models.Index(fields=['platform', 'subscribers'])]
@@ -70,6 +71,8 @@ class Campaign(models.Model):
     ends_at = models.DateField()
     min_subscribers = models.PositiveIntegerField(default=0)
     female_percent = models.PositiveSmallIntegerField(default=0, validators=[MaxValueValidator(100)])
+    age_min = models.PositiveSmallIntegerField(default=0, validators=[MaxValueValidator(100)])
+    age_max = models.PositiveSmallIntegerField(default=100, validators=[MaxValueValidator(100)])
     matched_bloggers = models.ManyToManyField(BloggerProfile, blank=True, related_name='matched_campaigns')
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -172,3 +175,13 @@ class SocialIdentity(models.Model):
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=['provider', 'subject'], name='unique_social_identity')]
+
+
+class CampaignResponse(models.Model):
+    campaign = models.ForeignKey(Campaign, on_delete=models.CASCADE, related_name='responses')
+    blogger = models.ForeignKey(BloggerProfile, on_delete=models.CASCADE, related_name='campaign_responses')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['campaign', 'blogger'], name='one_campaign_response_per_blogger')]
+        ordering = ['created_at']

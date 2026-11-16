@@ -11,7 +11,7 @@ from django.utils import timezone
 from rest_framework import viewsets, status, serializers
 from rest_framework.decorators import api_view, permission_classes, action, throttle_classes
 from rest_framework.exceptions import PermissionDenied, ValidationError
-from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated, IsAdminUser
 from rest_framework.response import Response
 from rest_framework.throttling import AnonRateThrottle
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -37,8 +37,12 @@ def register(request):
         user = s.save()
         token = signing.dumps({'uid': user.pk, 'email': user.email}, salt='email-confirm')
         link = settings.PUBLIC_URL+'/#/verify?token='+token
-        send_mail('Подтвердите email — Blogger Marketplace', 'Для завершения регистрации откройте: '+link, settings.DEFAULT_FROM_EMAIL, [user.email])
-    return Response({'detail': 'Письмо отправлено. Подтвердите email для входа.'}, status=201)
+        if not settings.EDUCATIONAL_MODE:
+            send_mail('Подтвердите email — Blogger Marketplace', 'Для завершения регистрации откройте: '+link, settings.DEFAULT_FROM_EMAIL, [user.email])
+    result = {'detail': 'Подтвердите учебный email по ссылке ниже.' if settings.EDUCATIONAL_MODE else 'Письмо отправлено. Подтвердите email для входа.'}
+    if settings.EDUCATIONAL_MODE:
+        result['verification_url'] = '/#/verify?token='+token
+    return Response(result, status=201)
 
 
 @extend_schema(request=inline_serializer('EmailToken', fields={'token': serializers.CharField()}), responses=OpenApiTypes.OBJECT)
@@ -50,6 +54,8 @@ def verify_email(request):
     except signing.BadSignature:
         raise ValidationError('Ссылка недействительна или устарела.')
     user = get_object_or_404(User, pk=data['uid'], email=data['email'])
+    if user.is_suspended:
+        raise PermissionDenied('Аккаунт заблокирован модератором.')
     # Do not reactivate an account blocked after an earlier confirmation.
     if not user.email_verified:
         user.email_verified = True
@@ -65,10 +71,15 @@ def verify_email(request):
 def resend_email(request):
     email = serializers.EmailField().run_validation(request.data.get('email'))
     user = User.objects.filter(email__iexact=email).first()
-    if user and not user.email_verified:
+    result = {'detail': 'Если адрес зарегистрирован, письмо подтверждения отправлено.'}
+    if user and not user.email_verified and not user.is_suspended:
         token = signing.dumps({'uid': user.pk, 'email': user.email}, salt='email-confirm')
-        send_mail('Подтвердите email — Blogger Marketplace', 'Откройте: '+settings.PUBLIC_URL+'/#/verify?token='+token, settings.DEFAULT_FROM_EMAIL, [user.email])
-    return Response({'detail': 'Если адрес зарегистрирован, письмо подтверждения отправлено.'})
+        if settings.EDUCATIONAL_MODE:
+            if request.user.is_authenticated and request.user.pk == user.pk:
+                result = {'detail':'Подтвердите учебный email.', 'verification_url':'/#/verify?token='+token}
+        else:
+            send_mail('Подтвердите email — Blogger Marketplace', 'Откройте: '+settings.PUBLIC_URL+'/#/verify?token='+token, settings.DEFAULT_FROM_EMAIL, [user.email])
+    return Response(result)
 
 
 @extend_schema(request=UserSerializer, responses=UserSerializer)
@@ -89,7 +100,10 @@ def profile(request):
     s = ProfileSerializer(obj, data=request.data, partial=True) if request.method == 'PATCH' else ProfileSerializer(obj)
     if request.method == 'PATCH':
         s.is_valid(raise_exception=True)
-        s.save(is_verified=False, fraud_status='unverified')
+        obj = s.save(is_verified=False, fraud_status='unverified')
+        from .tasks import check_fraud
+        check_fraud(obj.pk)
+        obj.refresh_from_db()
     return Response(s.data)
 
 
@@ -120,7 +134,8 @@ def options(request):
         'cities': list(BloggerProfile.objects.filter(user__is_active=True).exclude(city='').order_by('city').values_list('city', flat=True).distinct()),
         'platforms': ['Telegram', 'YouTube', 'TikTok'],
         'payment_mode': settings.PAYMENT_MODE, 'commission_percent': settings.COMMISSION_PERCENT,
-        'social_providers': {'google':bool(os.getenv('GOOGLE_CLIENT_ID') and os.getenv('GOOGLE_CLIENT_SECRET')), 'telegram':bool(os.getenv('TELEGRAM_BOT_NAME') and os.getenv('TELEGRAM_BOT_TOKEN'))},
+        'educational_mode': settings.EDUCATIONAL_MODE,
+        'social_providers': {'google':not settings.EDUCATIONAL_MODE and bool(os.getenv('GOOGLE_CLIENT_ID') and os.getenv('GOOGLE_CLIENT_SECRET')), 'telegram':not settings.EDUCATIONAL_MODE and bool(os.getenv('TELEGRAM_BOT_NAME') and os.getenv('TELEGRAM_BOT_TOKEN'))},
     })
 
 
@@ -323,9 +338,11 @@ class CampaignViewSet(viewsets.ModelViewSet):
     def respond(self, request, pk=None):
         require_role(request.user, 'blogger')
         c = self.get_object()
-        from django.core.cache import cache
-        if cache.add(f'campaign-interest:{c.pk}:{request.user.pk}', True, timeout=86400):
-            profile = get_object_or_404(BloggerProfile, user=request.user)
+        if c.ends_at < timezone.localdate():
+            raise ValidationError('Срок кампании уже истёк.')
+        profile = get_object_or_404(BloggerProfile, user=request.user)
+        response, created = CampaignResponse.objects.get_or_create(campaign=c, blogger=profile)
+        if created:
             notify(c.advertiser_id, f'{request.user.username} откликнулся на «{c.title}»', f'#/bloggers/{profile.pk}')
         return Response({'detail': 'Отклик отправлен рекламодателю.'})
 
@@ -357,6 +374,50 @@ class SavedSearchViewSet(viewsets.ModelViewSet):
         params = SearchParams(data=serializer.validated_data.get('filters', serializer.instance.filters))
         params.is_valid(raise_exception=True)
         serializer.save(filters=params.validated_data)
+
+
+class ModerationViewSet(viewsets.ReadOnlyModelViewSet):
+    serializer_class = ModerationUserSerializer
+    permission_classes = [IsAdminUser]
+    def get_queryset(self):
+        qs = User.objects.select_related('blogger_profile').order_by('id')
+        q = self.request.query_params.get('q', '').strip()
+        if q:
+            qs = qs.filter(Q(username__icontains=q) | Q(email__icontains=q) | Q(first_name__icontains=q))
+        return qs
+    @extend_schema(request=inline_serializer('ModerationAction', fields={'action':serializers.ChoiceField(choices=['block','unblock','verify','unverify','grant_premium','revoke_premium','check'])}), responses=ModerationUserSerializer)
+    @action(detail=True, methods=['post'])
+    @transaction.atomic
+    def moderate(self, request, pk=None):
+        user = self.get_queryset().select_for_update(of=('self',)).get(pk=self.get_object().pk)
+        op = request.data.get('action')
+        if user.pk == request.user.pk or user.is_staff or user.is_superuser:
+            raise PermissionDenied('Учётные записи администраторов защищены от изменения через эту панель.')
+        if op in ['block', 'unblock']:
+            user.is_suspended = op == 'block'
+            user.is_active = op == 'unblock' and user.email_verified
+            user.save(update_fields=['is_suspended', 'is_active'])
+        elif op in ['grant_premium', 'revoke_premium']:
+            user.is_premium = op == 'grant_premium'
+            user.save(update_fields=['is_premium'])
+        elif op in ['verify', 'unverify', 'check']:
+            profile = get_object_or_404(BloggerProfile, user=user)
+            from .tasks import check_fraud
+            check_fraud(profile.pk)
+            profile.refresh_from_db()
+            if op == 'verify' and profile.fraud_status == 'suspicious':
+                raise ValidationError('Сначала исправьте аномалии статистики. Подозрительный профиль нельзя подтвердить.')
+            if op != 'check':
+                profile.is_verified = op == 'verify'
+                profile.save(update_fields=['is_verified'])
+        else:
+            raise ValidationError('Неизвестное действие модерации.')
+        from django.contrib.admin.models import LogEntry, CHANGE
+        from django.contrib.contenttypes.models import ContentType
+        LogEntry.objects.create(user=request.user, content_type=ContentType.objects.get_for_model(User), object_id=str(user.pk), object_repr=user.username, action_flag=CHANGE, change_message='Учебная модерация: '+op)
+        user.refresh_from_db()
+        notify(user.pk, 'Модератор обновил состояние вашего аккаунта или профиля.', '#/profile')
+        return Response(self.get_serializer(user).data)
 
 
 @extend_schema(request=inline_serializer('DisputeDecision', fields={'decision': serializers.ChoiceField(choices=['blogger', 'advertiser']), 'resolution': serializers.CharField()}), responses=DisputeSerializer)

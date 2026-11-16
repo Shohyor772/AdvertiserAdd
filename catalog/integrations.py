@@ -2,6 +2,7 @@
 import os
 from datetime import timedelta
 import requests
+from django.conf import settings
 from django.utils import timezone
 from rest_framework.exceptions import APIException
 
@@ -12,6 +13,8 @@ class ProviderUnavailable(APIException):
 
 
 def provider_json(method, url, **kwargs):
+    if settings.EDUCATIONAL_MODE:
+        raise ProviderUnavailable('В учебной версии внешние подключения отключены.')
     try:
         r = requests.request(method, url, timeout=15, **kwargs)
         r.raise_for_status()

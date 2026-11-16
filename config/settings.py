@@ -14,6 +14,7 @@ load_dotenv(BASE_DIR / '.env')
 
 # SECURITY WARNING: keep the secret key used in production secret!
 DEBUG = os.getenv('DEBUG', 'true').lower() == 'true'
+EDUCATIONAL_MODE = os.getenv('EDUCATIONAL_MODE', 'true' if DEBUG else 'false').lower() == 'true'
 SECRET_KEY = os.getenv('SECRET_KEY', 'local-development-only-change-before-deployment-0123456789')
 if not DEBUG and SECRET_KEY.startswith('local-development'):
     raise ImproperlyConfigured('Set SECRET_KEY for production')
@@ -162,6 +163,13 @@ if REDIS_URL:
     SESSION_ENGINE = 'django.contrib.sessions.backends.cached_db'
 CELERY_BROKER_URL = REDIS_URL or 'memory://'
 CELERY_TASK_ALWAYS_EAGER = not bool(REDIS_URL)
+if EDUCATIONAL_MODE:
+    # The educational app must remain self-contained, even with old provider settings.
+    CACHES = {'default': {'BACKEND': 'django.core.cache.backends.locmem.LocMemCache'}}
+    SESSION_ENGINE = 'django.contrib.sessions.backends.db'
+    CELERY_TASK_ALWAYS_EAGER = True
+    EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+LOCAL_MAINTENANCE = EDUCATIONAL_MODE and os.getenv('LOCAL_MAINTENANCE', 'true').lower() == 'true'
 CELERY_BEAT_SCHEDULE = {
     'auto-accept': {'task': 'catalog.tasks.auto_accept', 'schedule': 300.0},
     'match-and-check': {'task': 'catalog.tasks.refresh_catalog', 'schedule': 3600.0},

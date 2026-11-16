@@ -9,3 +9,4 @@ EMAIL_BACKEND = 'django.core.mail.backends.filebased.EmailBackend'
 EMAIL_FILE_PATH = BASE_DIR / 'tmp' / 'e2e-emails'
 CACHES = {'default': {'BACKEND': 'django.core.cache.backends.locmem.LocMemCache'}}
 CELERY_TASK_ALWAYS_EAGER = True
+LOCAL_MAINTENANCE = False

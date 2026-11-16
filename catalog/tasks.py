@@ -12,7 +12,9 @@ RELATED_CATEGORIES = {'Фитнес': ['Спорт', 'ЗОЖ', 'Здоровье
 def match_campaign(campaign_id):
     with transaction.atomic():
         c = Campaign.objects.select_for_update().get(pk=campaign_id)
-        candidates = BloggerProfile.objects.filter(user__is_active=True, price__lte=c.budget, subscribers__gte=c.min_subscribers, female_percent__gte=c.female_percent)
+        if c.ends_at < timezone.localdate():
+            return []
+        candidates = BloggerProfile.objects.filter(user__is_active=True, price__lte=c.budget, subscribers__gte=c.min_subscribers, female_percent__gte=c.female_percent, age_min__gte=c.age_min, age_max__lte=c.age_max)
         if c.city:
             candidates = candidates.filter(city__iexact=c.city)
         matched = candidates.filter(category__iexact=c.category)
@@ -49,16 +51,24 @@ def auto_accept():
 def check_fraud(profile_id):
     """Heuristics identify suspicious self-reported data; never claim verification."""
     b = BloggerProfile.objects.get(pk=profile_id)
+    previous_status = b.fraud_status
     notes = []
     if b.subscribers >= 5000 and b.views < b.subscribers * .01:
         notes.append('Мало просмотров относительно подписчиков')
     if b.engagement_rate > 30:
         notes.append('Аномально высокий ER')
-    b.fraud_status = 'suspicious' if notes else 'unverified'
+    if b.age_min > b.age_max or not 0 <= b.female_percent <= 100:
+        notes.append('Противоречивые параметры аудитории')
+    if min(b.subscribers, b.views, b.price, b.engagement_rate) < 0:
+        notes.append('Отрицательные показатели')
+    b.fraud_status = 'suspicious' if notes else 'clear'
     if notes:
         b.is_verified = False
-    b.fraud_notes = '; '.join(notes) or 'Нет подтверждённых данных API для полноценной проверки.'
-    b.save(update_fields=['fraud_status', 'fraud_notes', 'is_verified'])
+    b.fraud_notes = '; '.join(notes) or 'В указанных показателях аномалий не выявлено. Проверка локальная, сведения соцсети не запрашивались.'
+    b.quality_checked_at = timezone.now()
+    b.save(update_fields=['fraud_status', 'fraud_notes', 'is_verified', 'quality_checked_at'])
+    if notes and previous_status != 'suspicious':
+        notify(b.user_id, 'Локальная проверка статистики обнаружила аномалии. Проверьте показатели профиля.', '#/profile')
     return b.fraud_status
 
 

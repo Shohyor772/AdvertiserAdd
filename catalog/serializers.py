@@ -1,4 +1,5 @@
 from pathlib import Path
+from django.conf import settings
 
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
@@ -30,8 +31,8 @@ class UserSerializer(serializers.ModelSerializer):
     rating = serializers.SerializerMethodField()
     class Meta:
         model = User
-        fields = ['id', 'username', 'email', 'first_name', 'user_type', 'account_type', 'inn', 'inn_verified', 'phone', 'email_verified', 'notifications_enabled', 'is_premium', 'is_staff', 'rating']
-        read_only_fields = ['id', 'username', 'email', 'user_type', 'account_type', 'inn', 'inn_verified', 'email_verified', 'is_premium', 'is_staff']
+        fields = ['id', 'username', 'email', 'first_name', 'user_type', 'account_type', 'inn', 'inn_verified', 'phone', 'email_verified', 'notifications_enabled', 'is_premium', 'is_staff', 'is_suspended', 'rating']
+        read_only_fields = ['id', 'username', 'email', 'user_type', 'account_type', 'inn', 'inn_verified', 'email_verified', 'is_premium', 'is_staff', 'is_suspended']
     def get_rating(self, obj) -> float | None:
         return obj.received_reviews.aggregate(value=Avg('rating'))['value']
 
@@ -55,7 +56,7 @@ class RegisterSerializer(serializers.ModelSerializer):
         if attrs.get('account_type') == 'company':
             validate_inn(attrs.get('inn', ''))
             import os
-            if os.getenv('DADATA_API_TOKEN'):
+            if not settings.EDUCATIONAL_MODE and os.getenv('DADATA_API_TOKEN'):
                 from .integrations import check_inn_registry
                 if not check_inn_registry(attrs['inn']):
                     raise serializers.ValidationError({'inn': 'ИНН не найден в реестре организаций. Проверьте данные или выберите физлицо.'})
@@ -74,10 +75,13 @@ class BloggerSerializer(serializers.ModelSerializer):
     rating = serializers.SerializerMethodField()
     review_count = serializers.SerializerMethodField()
     cpm = serializers.SerializerMethodField()
+    quality_report = serializers.SerializerMethodField()
     class Meta:
         model = BloggerProfile
-        fields = ['id', 'user_id', 'username', 'display_name', 'avatar_url', 'platform', 'subscribers', 'price', 'category', 'is_verified', 'city', 'bio', 'channel_url', 'views', 'engagement_rate', 'female_percent', 'age_min', 'age_max', 'forbidden_topics', 'fraud_status', 'stats_updated_at', 'rating', 'review_count', 'cpm']
-        read_only_fields = ['user_id', 'is_verified', 'fraud_status', 'stats_updated_at']
+        fields = ['id', 'user_id', 'username', 'display_name', 'avatar_url', 'platform', 'subscribers', 'price', 'category', 'is_verified', 'city', 'bio', 'channel_url', 'views', 'engagement_rate', 'female_percent', 'age_min', 'age_max', 'forbidden_topics', 'fraud_status', 'stats_updated_at', 'quality_checked_at', 'quality_report', 'rating', 'review_count', 'cpm']
+        read_only_fields = ['user_id', 'is_verified', 'fraud_status', 'stats_updated_at', 'quality_checked_at']
+    def get_quality_report(self, obj) -> dict:
+        return {'status':obj.fraud_status, 'summary':obj.fraud_notes or 'Проверка ещё не выполнялась.', 'checked_at':obj.quality_checked_at, 'source':'Локальный анализ указанных показателей; без обращения к соцсетям.'}
     def get_display_name(self, obj) -> str:
         return obj.user.first_name or obj.user.username
     def get_rating(self, obj) -> float | None:
@@ -103,6 +107,7 @@ class ProfileSerializer(BloggerSerializer):
 
 
 class CampaignSerializer(serializers.ModelSerializer):
+    responses = serializers.SerializerMethodField()
     class Meta:
         model = Campaign
         fields = '__all__'
@@ -110,7 +115,15 @@ class CampaignSerializer(serializers.ModelSerializer):
     def validate(self, data):
         if data.get('starts_at') and data.get('ends_at') and data['starts_at'] > data['ends_at']:
             raise serializers.ValidationError('Дата окончания должна быть не раньше даты начала.')
+        if data.get('age_min',0) > data.get('age_max',100):
+            raise serializers.ValidationError('Неверный диапазон возраста аудитории.')
         return data
+    def get_responses(self, obj) -> list[dict]:
+        request = self.context.get('request')
+        responses = obj.responses.select_related('blogger__user')
+        if request and request.user.pk != obj.advertiser_id:
+            responses = responses.filter(blogger__user=request.user)
+        return [{'id':r.pk,'blogger':r.blogger_id,'username':r.blogger.user.username,'created_at':r.created_at} for r in responses]
 
 
 class ProposalSerializer(serializers.ModelSerializer):
@@ -205,3 +218,12 @@ class SavedSearchSerializer(serializers.ModelSerializer):
         model = SavedSearch
         fields = ['id', 'title', 'filters', 'created_at']
         read_only_fields = ['created_at']
+
+
+class ModerationUserSerializer(UserSerializer):
+    blogger = serializers.SerializerMethodField()
+    class Meta(UserSerializer.Meta):
+        fields = UserSerializer.Meta.fields + ['is_active', 'blogger']
+        read_only_fields = fields
+    def get_blogger(self, obj) -> dict | None:
+        return BloggerSerializer(obj.blogger_profile).data if hasattr(obj, 'blogger_profile') else None

@@ -10,7 +10,7 @@ from .models import BloggerProfile, Proposal, Deal, LedgerEntry, Notification, R
 from .tasks import auto_accept, match_campaign, check_fraud
 
 
-@override_settings(PAYMENT_MODE='test', DEBUG=True, EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend', MEDIA_ROOT=tempfile.mkdtemp())
+@override_settings(PAYMENT_MODE='test', DEBUG=True, EDUCATIONAL_MODE=False, EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend', MEDIA_ROOT=tempfile.mkdtemp())
 class WorkflowTests(APITestCase):
     @classmethod
     def setUpTestData(cls):

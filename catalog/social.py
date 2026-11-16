@@ -51,6 +51,8 @@ def social_user(provider, subject, email='', name='', linking_user=None):
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def google_start(request):
+    if settings.EDUCATIONAL_MODE:
+        raise ProviderUnavailable('В учебной версии используется регистрация по email без внешних платформ.')
     client = os.getenv('GOOGLE_CLIENT_ID')
     if not client or not os.getenv('GOOGLE_CLIENT_SECRET'):
         raise ProviderUnavailable('Google OAuth пока не настроен. Можно зарегистрироваться по email.')
@@ -71,6 +73,8 @@ def google_start(request):
 
 @require_GET
 def google_callback(request):
+    if settings.EDUCATIONAL_MODE:
+        return HttpResponseRedirect('/#/login')
     attempt = request.session.pop('oauth_attempt', None)
     if not attempt or not secrets.compare_digest(attempt['state'], request.GET.get('state', '')) or time.time()-attempt['created'] > 600:
         return HttpResponseRedirect('/#/login?oauth_error=state')
@@ -119,6 +123,8 @@ def exchange(request):
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def telegram_start(request):
+    if settings.EDUCATIONAL_MODE:
+        raise ProviderUnavailable('В учебной версии Telegram не подключается.')
     if not os.getenv('TELEGRAM_BOT_TOKEN') or not os.getenv('TELEGRAM_BOT_NAME'):
         raise ProviderUnavailable('Вход через Telegram пока не настроен.')
     nonce = secrets.token_urlsafe(32)
@@ -131,6 +137,8 @@ def telegram_start(request):
 @permission_classes([AllowAny])
 @transaction.atomic
 def telegram_login(request):
+    if settings.EDUCATIONAL_MODE:
+        raise ProviderUnavailable('В учебной версии Telegram не подключается.')
     nonce = request.session.pop('telegram_nonce', None)
     if not nonce or not secrets.compare_digest(nonce, str(request.data.get('nonce', ''))):
         raise PermissionDenied('Повторите вход через Telegram.')

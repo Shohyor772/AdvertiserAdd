@@ -10,7 +10,7 @@ from .models import BloggerProfile, SocialIdentity
 from .integrations import ProviderUnavailable, youtube_statistics
 
 
-@override_settings(DEBUG=True)
+@override_settings(DEBUG=True, EDUCATIONAL_MODE=False)
 class IntegrationTests(APITestCase):
     def test_unconfigured_oauth_is_not_a_fake_login(self):
         with patch.dict(os.environ, {'GOOGLE_CLIENT_ID':'','GOOGLE_CLIENT_SECRET':''}):

@@ -13,6 +13,7 @@ router.register('campaigns', api.CampaignViewSet, basename='campaign')
 router.register('reviews', api.ReviewViewSet, basename='review')
 router.register('notifications', api.NotificationViewSet, basename='notification')
 router.register('searches', api.SavedSearchViewSet, basename='search')
+router.register('moderation', api.ModerationViewSet, basename='moderation')
 
 class LoginView(TokenObtainPairView):
     throttle_classes = [api.LoginThrottle]
