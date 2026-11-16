@@ -3,7 +3,7 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
-from catalog import api, views
+from catalog import api, views, social
 
 router = DefaultRouter()
 router.register('bloggers', api.BloggerViewSet, basename='blogger')
@@ -20,6 +20,11 @@ class LoginView(TokenObtainPairView):
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/register/', api.register),
+    path('api/auth/google/start/', social.google_start),
+    path('api/auth/exchange/', social.exchange),
+    path('api/auth/telegram/start/', social.telegram_start),
+    path('api/auth/telegram/login/', social.telegram_login),
+    path('auth/google/callback/', social.google_callback),
     path('api/verify-email/', api.verify_email),
     path('api/resend-email/', api.resend_email),
     path('api/login/', LoginView.as_view()),
@@ -29,6 +34,7 @@ urlpatterns = [
     path('api/profile/', api.profile),
     path('api/options/', api.options),
     path('api/analytics/', api.analytics),
+    path('api/export/', api.export_catalog),
     path('api/disputes/<int:pk>/resolve/', api.resolve),
     path('api/files/<str:kind>/<int:pk>/', api.download),
     path('api/schema/', SpectacularAPIView.as_view(), name='schema'),

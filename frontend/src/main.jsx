@@ -37,7 +37,7 @@ import {
   ExternalLink,
   Sparkles,
 } from "lucide-react";
-import { api, rows, money, number, downloadFile } from "./api";
+import { api, rows, money, number, downloadFile, downloadCatalog } from "./api";
 import "./style.css";
 
 function useRoute() {
@@ -125,10 +125,10 @@ function Badge({ b }) {
     <span className="badge neutral">Не верифицирован</span>
   );
 }
-function Avatar({ name, size = "normal", id = 0 }) {
+function Avatar({ name, size = "normal", id = 0, src }) {
   return (
     <div className={`avatar ${size} tone-${Number(id) % 5}`}>
-      {(name || "?").slice(0, 2).toUpperCase()}
+      {src ? <img src={src} alt="" loading="lazy" referrerPolicy="no-referrer" onError={e=>{e.currentTarget.style.display='none'}}/> : (name || "?").slice(0, 2).toUpperCase()}
     </div>
   );
 }
@@ -310,6 +310,7 @@ function App() {
   let content;
   if (!ready) content = <Loading />;
   else if (route.startsWith("/verify")) content = <Verify route={route} />;
+  else if (route.startsWith('/oauth')) content = <SocialExchange onLogin={u=>{setUser(u);go('/profile')}}/>;
   else if (route.startsWith("/login") || route === "/register")
     content = (
       <Auth
@@ -847,6 +848,7 @@ function Catalog({ user, opts, route }) {
               {loading ? "Ищем авторов…" : `Авторов: ${data?.count || 0}`}
               <span> в каталоге</span>
             </strong>
+            {user?.user_type==='advertiser'&&<button className="text-link export-link" onClick={()=>downloadCatalog(applied).catch(e=>setSaveError(e.message))}>Экспорт CSV <ArrowUpRight size={14}/></button>}
             <button
               className="filter-mobile"
               onClick={() => setShowFilters(!showFilters)}
@@ -961,7 +963,7 @@ function BloggerCard({ b }) {
       </div>
       <div className="card-body">
         <div className="card-identity">
-          <Avatar name={b.display_name} id={b.id} size="large" />
+          <Avatar name={b.display_name} id={b.id} size="large" src={b.avatar_url}/>
           <span className="rating">
             <Star size={13} />
             {b.rating ? Number(b.rating).toFixed(1) : "Новый"}
@@ -1116,6 +1118,8 @@ function Auth({ register, onLogin }) {
             </p>
           )}
         </Form>
+        <SocialButtons onLogin={onLogin}/>
+        {location.hash.includes('oauth_error') && <ErrorBox text="Вход через соцсеть не завершён. Повторите попытку или используйте email. Если этот email уже зарегистрирован, войдите паролем и подключите соцсеть в профиле."/>}
         <p className="auth-switch">
           {register ? "Уже есть аккаунт? " : "Нет аккаунта? "}
           <a href={register ? "#/login" : "#/register"}>
@@ -1126,6 +1130,21 @@ function Auth({ register, onLogin }) {
     </div>
   );
 }
+function SocialExchange({onLogin}) {
+  const [error,setError]=useState('');
+  useEffect(()=>{api('auth/exchange/',{method:'POST'}).then(async t=>{sessionStorage.setItem('access',t.access);sessionStorage.setItem('refresh',t.refresh);if(location.hash.includes('stats=partial'))sessionStorage.setItem('stats-warning','true');onLogin(await api('me/'))}).catch(e=>setError(e.message))},[]);
+  return <div className="panel narrow"><h2>Подключаем аккаунт</h2>{error?<ErrorBox text={error}/>:<Loading/>}</div>;
+}
+
+function SocialButtons({onLogin,connect=false}) {
+  const {data}=useLoad('options/');const [error,setError]=useState('');const target=useRef(null);
+  const google=async provider=>{try{const d=await api('auth/google/start/',{method:'POST',body:{provider}});location.assign(d.authorization_url)}catch(e){setError(e.message)}};
+  const telegram=async()=>{try{const d=await api('auth/telegram/start/',{method:'POST'});window.bloggerTelegramLogin=async auth=>{try{const t=await api('auth/telegram/login/',{method:'POST',body:{auth,nonce:d.nonce}});sessionStorage.setItem('access',t.access);sessionStorage.setItem('refresh',t.refresh);onLogin(await api('me/'))}catch(e){setError(e.message)}};target.current.replaceChildren();const script=document.createElement('script');script.src='https://telegram.org/js/telegram-widget.js?22';script.async=true;script.dataset.telegramLogin=d.bot_name;script.dataset.size='large';script.dataset.onauth='bloggerTelegramLogin(user)';target.current.appendChild(script)}catch(e){setError(e.message)}};
+  useEffect(()=>()=>{delete window.bloggerTelegramLogin},[]);
+  if(!data?.social_providers?.google&&!data?.social_providers?.telegram)return null;
+  return <div className="social-buttons"><p className="help">{connect?'Подключить статистику и вход':'Для блогеров — вход через соцсеть'}</p>{data.social_providers.google&&<><button type="button" className="button secondary" onClick={()=>google('google')}>Google</button><button type="button" className="button secondary" onClick={()=>google('youtube')}>YouTube + статистика</button></>}{data.social_providers.telegram&&!connect&&<button type="button" className="button secondary" onClick={telegram}>Telegram</button>}<div ref={target}/><ErrorBox text={error}/></div>;
+}
+
 function Verify({ route }) {
   const token = new URLSearchParams(route.split("?")[1]).get("token");
   const [result, set] = useState(""),
@@ -1165,7 +1184,7 @@ function BloggerDetail({ id, user }) {
               <span className="cover-circle" />
             </div>
             <div className="profile-info">
-              <Avatar name={b.display_name} id={b.id} size="huge" />
+              <Avatar name={b.display_name} id={b.id} size="huge" src={b.avatar_url}/>
               <Badge b={b} />
               <h1>{b.display_name}</h1>
               <div className="muted">
@@ -2006,6 +2025,8 @@ function Profile({ user, setUser }) {
         {user.user_type === "blogger" && (
           <div className="panel">
             <h2>Публичный профиль</h2>
+            {sessionStorage.getItem('stats-warning')&&<div className="info">Не удалось загрузить всю статистику YouTube. Аккаунт сохранён. Заполните данные вручную или подключите канал повторно позже.</div>}
+          <SocialButtons connect onLogin={setUser}/>
             <ErrorBox text={error} />
             {loading ? (
               <Loading />

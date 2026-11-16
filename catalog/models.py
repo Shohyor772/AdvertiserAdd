@@ -1,6 +1,7 @@
 from django.db import models
 from django.conf import settings
 from django.core.validators import MinValueValidator, MaxValueValidator
+import uuid
 
 class BloggerProfile(models.Model):
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='blogger_profile')
@@ -11,6 +12,7 @@ class BloggerProfile(models.Model):
     is_verified = models.BooleanField(default=False)
     city = models.CharField(max_length=120, blank=True, db_index=True)
     bio = models.TextField(blank=True)
+    avatar_url = models.URLField(blank=True)
     channel_url = models.URLField(blank=True)
     views = models.PositiveIntegerField(default=0)
     engagement_rate = models.FloatField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)])
@@ -102,7 +104,7 @@ class Deal(models.Model):
 
 class Payment(models.Model):
     deal = models.OneToOneField(Deal, on_delete=models.PROTECT, related_name='payment')
-    key = models.UUIDField(unique=True, default=__import__('uuid').uuid4, editable=False)
+    key = models.UUIDField(unique=True, default=uuid.uuid4, editable=False)
     provider_id = models.CharField(max_length=100, blank=True, unique=True, null=True)
     status = models.CharField(max_length=24, default='pending')
     confirmation_url = models.URLField(blank=True)
@@ -160,3 +162,13 @@ class SavedSearch(models.Model):
     filters = models.JSONField(default=dict)
     last_result_ids = models.JSONField(default=list)
     created_at = models.DateTimeField(auto_now_add=True)
+
+
+class SocialIdentity(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='social_identities')
+    provider = models.CharField(max_length=20)
+    subject = models.CharField(max_length=200)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['provider', 'subject'], name='unique_social_identity')]

@@ -141,7 +141,7 @@ REST_FRAMEWORK = {
     'DEFAULT_THROTTLE_RATES': {'anon': '120/min', 'user': '600/min', 'login': '10/min'},
 }
 SIMPLE_JWT = {'ACCESS_TOKEN_LIFETIME': timedelta(minutes=30), 'REFRESH_TOKEN_LIFETIME': timedelta(days=1), 'ROTATE_REFRESH_TOKENS': True, 'BLACKLIST_AFTER_ROTATION': True}
-SPECTACULAR_SETTINGS = {'TITLE': 'Blogger Marketplace API', 'VERSION': '1.0.0', 'COMPONENT_SPLIT_REQUEST': True}
+SPECTACULAR_SETTINGS = {'TITLE': 'Blogger Marketplace API', 'VERSION': '1.0.0', 'COMPONENT_SPLIT_REQUEST': True, 'ENUM_NAME_OVERRIDES': {'DisputeDecisionEnum':['blogger','advertiser'], 'UserRoleEnum':['blogger','advertiser','admin']}}
 EMAIL_BACKEND = os.getenv('EMAIL_BACKEND', 'django.core.mail.backends.console.EmailBackend')
 EMAIL_HOST = os.getenv('EMAIL_HOST', '')
 EMAIL_PORT = int(os.getenv('EMAIL_PORT', '587'))

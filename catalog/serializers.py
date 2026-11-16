@@ -30,8 +30,8 @@ class UserSerializer(serializers.ModelSerializer):
     rating = serializers.SerializerMethodField()
     class Meta:
         model = User
-        fields = ['id', 'username', 'email', 'first_name', 'user_type', 'account_type', 'inn', 'phone', 'email_verified', 'notifications_enabled', 'is_premium', 'is_staff', 'rating']
-        read_only_fields = ['id', 'username', 'email', 'user_type', 'account_type', 'inn', 'email_verified', 'is_premium', 'is_staff']
+        fields = ['id', 'username', 'email', 'first_name', 'user_type', 'account_type', 'inn', 'inn_verified', 'phone', 'email_verified', 'notifications_enabled', 'is_premium', 'is_staff', 'rating']
+        read_only_fields = ['id', 'username', 'email', 'user_type', 'account_type', 'inn', 'inn_verified', 'email_verified', 'is_premium', 'is_staff']
     def get_rating(self, obj) -> float | None:
         return obj.received_reviews.aggregate(value=Avg('rating'))['value']
 
@@ -54,6 +54,12 @@ class RegisterSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({'password': exc.messages})
         if attrs.get('account_type') == 'company':
             validate_inn(attrs.get('inn', ''))
+            import os
+            if os.getenv('DADATA_API_TOKEN'):
+                from .integrations import check_inn_registry
+                if not check_inn_registry(attrs['inn']):
+                    raise serializers.ValidationError({'inn': 'ИНН не найден в реестре организаций. Проверьте данные или выберите физлицо.'})
+                attrs['inn_verified'] = True
         return attrs
     def create(self, data):
         user = User.objects.create_user(**data, is_active=False)
@@ -70,7 +76,7 @@ class BloggerSerializer(serializers.ModelSerializer):
     cpm = serializers.SerializerMethodField()
     class Meta:
         model = BloggerProfile
-        fields = ['id', 'user_id', 'username', 'display_name', 'platform', 'subscribers', 'price', 'category', 'is_verified', 'city', 'bio', 'channel_url', 'views', 'engagement_rate', 'female_percent', 'age_min', 'age_max', 'forbidden_topics', 'fraud_status', 'stats_updated_at', 'rating', 'review_count', 'cpm']
+        fields = ['id', 'user_id', 'username', 'display_name', 'avatar_url', 'platform', 'subscribers', 'price', 'category', 'is_verified', 'city', 'bio', 'channel_url', 'views', 'engagement_rate', 'female_percent', 'age_min', 'age_max', 'forbidden_topics', 'fraud_status', 'stats_updated_at', 'rating', 'review_count', 'cpm']
         read_only_fields = ['user_id', 'is_verified', 'fraud_status', 'stats_updated_at']
     def get_display_name(self, obj) -> str:
         return obj.user.first_name or obj.user.username
@@ -127,6 +133,9 @@ class ProposalSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError('Нельзя отправить предложение этому профилю.')
         if not data.get('message', '').strip() and not data.get('attachment'):
             raise serializers.ValidationError('Добавьте сообщение или файл ТЗ.')
+        forbidden = [t.strip().casefold() for t in data['blogger'].forbidden_topics.replace(',', '\n').splitlines() if t.strip()]
+        if any(t in data.get('message', '').casefold() for t in forbidden):
+            raise serializers.ValidationError('В предложении указана тема, которую блогер не рекламирует. Проверьте ограничения профиля.')
         if not 1 <= data['price'] <= 1_000_000_000:
             raise serializers.ValidationError({'price': 'Цена должна быть от 1 до 1 000 000 000 ₽.'})
         if data.get('campaign') and data['campaign'].advertiser_id != user.pk:

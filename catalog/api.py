@@ -15,7 +15,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.throttling import AnonRateThrottle
 from rest_framework_simplejwt.tokens import RefreshToken
-from drf_spectacular.utils import extend_schema, inline_serializer, OpenApiTypes, OpenApiParameter
+from drf_spectacular.utils import extend_schema, extend_schema_view, inline_serializer, OpenApiTypes, OpenApiParameter
 from .models import *
 from .serializers import *
 from .search import search_bloggers, SearchParams
@@ -105,6 +105,8 @@ def logout(request):
         raise
     except Exception:
         raise ValidationError('Недействительный refresh token.')
+    from django.contrib.auth import logout as session_logout
+    session_logout(request._request)
     return Response(status=204)
 
 
@@ -112,14 +114,17 @@ def logout(request):
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def options(request):
+    import os
     return Response({
         'categories': list(BloggerProfile.objects.filter(user__is_active=True).order_by('category').values_list('category', flat=True).distinct()),
         'cities': list(BloggerProfile.objects.filter(user__is_active=True).exclude(city='').order_by('city').values_list('city', flat=True).distinct()),
         'platforms': ['Telegram', 'YouTube', 'TikTok'],
         'payment_mode': settings.PAYMENT_MODE, 'commission_percent': settings.COMMISSION_PERCENT,
+        'social_providers': {'google':bool(os.getenv('GOOGLE_CLIENT_ID') and os.getenv('GOOGLE_CLIENT_SECRET')), 'telegram':bool(os.getenv('TELEGRAM_BOT_NAME') and os.getenv('TELEGRAM_BOT_TOKEN'))},
     })
 
 
+@extend_schema_view(list=extend_schema(parameters=[SearchParams]))
 class BloggerViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = BloggerSerializer
     permission_classes = [AllowAny]
@@ -134,6 +139,7 @@ class BloggerViewSet(viewsets.ReadOnlyModelViewSet):
         data = self.get_serializer(obj).data
         data['reviews'] = ReviewSerializer(obj.user.received_reviews.select_related('author').order_by('-created_at')[:30], many=True).data
         return Response(data)
+    @extend_schema(parameters=[OpenApiParameter('q', str)], responses=OpenApiTypes.OBJECT)
     @action(detail=False)
     def suggest(self, request):
         return Response(list(search_bloggers({'q': request.query_params.get('q', '')}).values('id', 'user__username')[:8]))
@@ -168,6 +174,7 @@ class ProposalViewSet(viewsets.ModelViewSet):
         data['dispute'] = DisputeSerializer(p.deal.dispute).data if hasattr(p, 'deal') and hasattr(p.deal, 'dispute') else None
         data['reviews'] = ReviewSerializer(p.deal.reviews.all(), many=True).data if hasattr(p, 'deal') else []
         return Response(data)
+    @extend_schema(request=MessageSerializer, responses={201: MessageSerializer})
     @action(detail=True, methods=['post'])
     def message(self, request, pk=None):
         p = self.get_object()
@@ -179,6 +186,7 @@ class ProposalViewSet(viewsets.ModelViewSet):
         for uid in recipients:
             notify(uid, 'Новое сообщение в чате', f'#/chats/{p.pk}')
         return Response(s.data, status=201)
+    @extend_schema(request=inline_serializer('Negotiation', fields={'action': serializers.ChoiceField(choices=['accept','reject','counter']), 'price': serializers.IntegerField(required=False, min_value=1)}), responses=ProposalSerializer)
     @action(detail=True, methods=['post'])
     @transaction.atomic
     def negotiate(self, request, pk=None):
@@ -213,11 +221,13 @@ class DealViewSet(viewsets.ReadOnlyModelViewSet):
         if self.request.user.is_staff:
             return qs
         return qs.filter(Q(proposal__advertiser=self.request.user) | Q(proposal__blogger__user=self.request.user))
+    @extend_schema(request=None, responses=DealSerializer)
     @action(detail=True, methods=['post'])
     def pay(self, request, pk=None):
         d = self.get_object()
         d = confirm_test_payment(d.pk, request.user)
         return Response(self.get_serializer(d).data)
+    @extend_schema(request=inline_serializer('Publication', fields={'publication_url':serializers.URLField()}), responses=DealSerializer)
     @action(detail=True, methods=['post'])
     @transaction.atomic
     def submit(self, request, pk=None):
@@ -234,9 +244,11 @@ class DealViewSet(viewsets.ReadOnlyModelViewSet):
         d.save()
         notify(d.proposal.advertiser_id, 'Работа сдана на приёмку. Автоприёмка через 3 дня.', f'#/chats/{d.proposal_id}')
         return Response(self.get_serializer(d).data)
+    @extend_schema(request=None, responses=DealSerializer)
     @action(detail=True, methods=['post'])
     def accept(self, request, pk=None):
         return Response(self.get_serializer(complete(self.get_object().pk, request.user)).data)
+    @extend_schema(request=inline_serializer('Revision', fields={'reason':serializers.CharField()}), responses=DealSerializer)
     @action(detail=True, methods=['post'])
     @transaction.atomic
     def revise(self, request, pk=None):
@@ -250,6 +262,7 @@ class DealViewSet(viewsets.ReadOnlyModelViewSet):
         d.save()
         notify(d.proposal.blogger.user_id, 'Требуется доработка: '+d.revision_reason[:300], f'#/chats/{d.proposal_id}')
         return Response(self.get_serializer(d).data)
+    @extend_schema(request=DisputeSerializer, responses={201: DisputeSerializer})
     @action(detail=True, methods=['post'])
     @transaction.atomic
     def dispute(self, request, pk=None):
@@ -305,6 +318,7 @@ class CampaignViewSet(viewsets.ModelViewSet):
         c = serializer.save(advertiser=self.request.user)
         from .tasks import match_campaign
         transaction.on_commit(lambda: match_campaign.delay(c.pk))
+    @extend_schema(request=None, responses=OpenApiTypes.OBJECT)
     @action(detail=True, methods=['post'])
     def respond(self, request, pk=None):
         require_role(request.user, 'blogger')
@@ -323,6 +337,7 @@ class NotificationViewSet(viewsets.ModelViewSet):
         return Notification.objects.filter(user=self.request.user) if self.request.user.is_authenticated else Notification.objects.none()
     def create(self, request, *args, **kwargs):
         raise PermissionDenied()
+    @extend_schema(request=None, responses={204: None})
     @action(detail=False, methods=['post'])
     def read_all(self, request):
         self.get_queryset().update(is_read=True)
@@ -380,3 +395,22 @@ def analytics(request):
     from django.db.models import F, FloatField, ExpressionWrapper
     rows = BloggerProfile.objects.filter(user__is_active=True, views__gt=0).values('category').annotate(count=Count('id'), average_cpm=Avg(ExpressionWrapper(F('price')*1000.0/F('views'), output_field=FloatField())), average_price=Avg('price'))
     return Response(list(rows))
+
+
+@extend_schema(parameters=[SearchParams], responses=OpenApiTypes.BINARY)
+@api_view(['GET'])
+def export_catalog(request):
+    import csv
+    import io
+    from django.http import HttpResponse
+    require_role(request.user, 'advertiser')
+    output = io.StringIO()
+    output.write('\ufeff')
+    writer = csv.writer(output)
+    writer.writerow(['Блогер', 'Площадка', 'Тематика', 'Город', 'Подписчики', 'Просмотры', 'Цена, ₽', 'Рейтинг', 'Канал'])
+    for b in search_bloggers(request.query_params).iterator(chunk_size=1000):
+        row = [b.user.username, b.platform, b.category, b.city, b.subscribers, b.views, b.price, b.rating_value or '', b.channel_url]
+        writer.writerow([("'"+str(v)) if str(v).lstrip().startswith(('=', '+', '-', '@')) else v for v in row])
+    response = HttpResponse(output.getvalue(), content_type='text/csv; charset=utf-8')
+    response['Content-Disposition'] = 'attachment; filename="bloggers.csv"'
+    return response

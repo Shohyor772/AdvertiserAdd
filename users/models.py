@@ -13,6 +13,7 @@ class User(AbstractUser):
     updated_at = models.DateTimeField(auto_now=True)
     account_type = models.CharField(max_length=12, choices=[('person', 'Физлицо'), ('company', 'Юрлицо')], default='person')
     inn = models.CharField(max_length=12, blank=True)
+    inn_verified = models.BooleanField(default=False)
     email_verified = models.BooleanField(default=False)
     notifications_enabled = models.BooleanField(default=True)
     is_premium = models.BooleanField(default=False)

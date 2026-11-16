@@ -10,10 +10,12 @@ export function errorText(value) {
       .join(" ");
   return "Не удалось выполнить запрос.";
 }
+let refreshPromise;
 export async function api(path, options = {}) {
   const token = sessionStorage.getItem("access");
   const isForm = options.body instanceof FormData;
   const headers = {
+    'X-CSRFToken': decodeURIComponent(document.cookie.split('; ').find(v=>v.startsWith('csrftoken='))?.split('=')[1]||''),
     ...(!isForm && options.body ? { "Content-Type": "application/json" } : {}),
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...options.headers,
@@ -32,13 +34,13 @@ export async function api(path, options = {}) {
     sessionStorage.getItem("refresh") &&
     !options.retried
   ) {
-    const r = await fetch("/api/token/refresh/", {
+    if(!refreshPromise) refreshPromise=fetch("/api/token/refresh/", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ refresh: sessionStorage.getItem("refresh") }),
-    });
-    if (r.ok) {
-      const t = await r.json();
+    }).then(async r=>r.ok?await r.json():null).finally(()=>{refreshPromise=null});
+    const t=await refreshPromise;
+    if (t) {
       sessionStorage.setItem("access", t.access);
       if (t.refresh) sessionStorage.setItem("refresh", t.refresh);
       return api(path, { ...options, retried: true });
@@ -83,4 +85,10 @@ export async function downloadFile(kind, id) {
     : disposition.match(/filename="([^"]+)"/)?.[1] || "attachment";
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+export async function downloadCatalog(filters) {
+  const r=await fetch('/api/export/?'+new URLSearchParams(filters),{headers:{Authorization:`Bearer ${sessionStorage.getItem('access')}`}});
+  if(!r.ok)throw new Error('Экспорт недоступен. Войдите как рекламодатель.');
+  const url=URL.createObjectURL(await r.blob());const a=document.createElement('a');a.href=url;a.download='bloggers.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
 }

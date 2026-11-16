@@ -55,8 +55,10 @@ def check_fraud(profile_id):
     if b.engagement_rate > 30:
         notes.append('Аномально высокий ER')
     b.fraud_status = 'suspicious' if notes else 'unverified'
+    if notes:
+        b.is_verified = False
     b.fraud_notes = '; '.join(notes) or 'Нет подтверждённых данных API для полноценной проверки.'
-    b.save(update_fields=['fraud_status', 'fraud_notes'])
+    b.save(update_fields=['fraud_status', 'fraud_notes', 'is_verified'])
     return b.fraud_status
 
 
