@@ -72,3 +72,12 @@ jobs:
         with:
           name: browser-report
           path: tmp/playwright-report
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t blogger-ci .
+      - run: docker run -d --name marketplace-ci -p 127.0.0.1:8003:8000 -e DEBUG=true -e PAYMENT_MODE=test -e ALLOWED_HOSTS=127.0.0.1,localhost blogger-ci
+      - run: curl --fail --retry 20 --retry-all-errors --retry-delay 2 http://127.0.0.1:8003/health/
+      - run: docker logs marketplace-ci
+        if: always()
