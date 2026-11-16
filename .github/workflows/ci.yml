@@ -9,6 +9,7 @@ jobs:
   backend:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         database: [sqlite, postgres]
     services:
@@ -20,7 +21,7 @@ jobs:
           POSTGRES_PASSWORD: ci-local-only
         ports: ['5432:5432']
         options: >-
-          --health-cmd 'pg_isready -U marketplace'
+          --health-cmd "pg_isready -U marketplace"
           --health-interval 5s --health-timeout 3s --health-retries 20
     env:
       POSTGRES_HOST: ${{ matrix.database == 'postgres' && '127.0.0.1' || '' }}
