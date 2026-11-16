@@ -153,6 +153,7 @@ class BloggerViewSet(viewsets.ReadOnlyModelViewSet):
                 notify(obj.user_id, f'{request.user.username} просмотрел ваш профиль.', f'#/bloggers/{obj.pk}')
         data = self.get_serializer(obj).data
         data['reviews'] = ReviewSerializer(obj.user.received_reviews.select_related('author').order_by('-created_at')[:30], many=True).data
+        data['cooperations'] = [{'advertiser':d.proposal.advertiser.username,'completed_at':d.completed_at} for d in Deal.objects.filter(proposal__blogger=obj,status='completed').select_related('proposal__advertiser').order_by('-completed_at')[:30]]
         return Response(data)
     @extend_schema(parameters=[OpenApiParameter('q', str)], responses=OpenApiTypes.OBJECT)
     @action(detail=False)
@@ -379,6 +380,10 @@ class SavedSearchViewSet(viewsets.ModelViewSet):
 class ModerationViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = ModerationUserSerializer
     permission_classes = [IsAdminUser]
+    @extend_schema(responses=OpenApiTypes.OBJECT)
+    @action(detail=False)
+    def overview(self, request):
+        return Response({'users':User.objects.count(), 'blocked':User.objects.filter(is_suspended=True).count(), 'bloggers':BloggerProfile.objects.count(), 'campaigns':Campaign.objects.count(), 'deals':Deal.objects.count(), 'open_disputes':Dispute.objects.filter(resolved_at__isnull=True).count()})
     def get_queryset(self):
         qs = User.objects.select_related('blogger_profile').order_by('id')
         q = self.request.query_params.get('q', '').strip()

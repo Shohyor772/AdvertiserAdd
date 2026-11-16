@@ -1,5 +1,43 @@
 import { test, expect } from "@playwright/test";
 
+test("educational registration confirms locally without external requests", async ({
+  page,
+}) => {
+  const external = [];
+  page.on("request", (r) => {
+    if (!r.url().startsWith("http://127.0.0.1:8002")) external.push(r.url());
+  });
+  await page.goto("/#/register");
+  const username = "edu_registered_" + Date.now();
+  await page.getByLabel("Имя пользователя", { exact: true }).fill(username);
+  await page
+    .getByLabel("Email", { exact: true })
+    .fill(username + "@example.test");
+  await page
+    .getByLabel("Пароль", { exact: true })
+    .fill("Educational-Strong-54321");
+  await page
+    .getByRole("button", { name: "Зарегистрироваться", exact: true })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: "Подтвердите email" }),
+  ).toBeVisible();
+  await page.getByRole("link", { name: "Подтвердить учебный email" }).click();
+  await expect(
+    page.getByText("Email подтверждён. Теперь можно войти.", { exact: true }),
+  ).toBeVisible();
+  await page.getByRole("link", { name: "Перейти ко входу" }).click();
+  await page.getByLabel("Имя пользователя", { exact: true }).fill(username);
+  await page
+    .getByLabel("Пароль", { exact: true })
+    .fill("Educational-Strong-54321");
+  await page.getByRole("button", { name: "Войти", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: "Найдите своего блогера" }),
+  ).toBeVisible();
+  expect(external).toEqual([]);
+});
+
 async function login(page, username) {
   await page.goto("/#/login");
   await page.getByLabel("Имя пользователя", { exact: true }).fill(username);
@@ -52,9 +90,13 @@ test("catalog desktop and mobile, filters, empty state, detail", async ({
   await page.getByRole("button", { name: "Фильтры", exact: true }).click();
   await expect(page.getByLabel("Город", { exact: true })).toBeVisible();
   expect(errors).toEqual([]);
-  for(const width of [320,768]){
-    await page.setViewportSize({width,height:900});
-    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBeTruthy();
+  for (const width of [320, 768]) {
+    await page.setViewportSize({ width, height: 900 });
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth,
+      ),
+    ).toBeTruthy();
   }
 });
 
@@ -120,13 +162,11 @@ test("file brief → dispute → support message → administrator refund", asyn
     m = await admin.newPage();
   await login(a, "e2e_ad");
   await a.locator(".card-name").click();
-  await a
-    .getByLabel("Файл ТЗ (необязательно)")
-    .setInputFiles({
-      name: "brief.txt",
-      mimeType: "text/plain",
-      buffer: Buffer.from("Publish the agreed product link."),
-    });
+  await a.getByLabel("Файл ТЗ (необязательно)").setInputFiles({
+    name: "brief.txt",
+    mimeType: "text/plain",
+    buffer: Buffer.from("Publish the agreed product link."),
+  });
   await a.getByRole("button", { name: "Отправить предложение" }).click();
   await expect(
     a.getByRole("heading", { name: "Условия интеграции" }),
@@ -145,13 +185,11 @@ test("file brief → dispute → support message → administrator refund", asyn
   await a.reload();
   await a.locator("summary").filter({ hasText: "Открыть спор" }).click();
   await a.getByLabel("Причина спора").fill("В публикации отсутствует продукт");
-  await a
-    .getByLabel("Доказательства (до 10 МБ)")
-    .setInputFiles({
-      name: "evidence.txt",
-      mimeType: "text/plain",
-      buffer: Buffer.from("Missing product link."),
-    });
+  await a.getByLabel("Доказательства (до 10 МБ)").setInputFiles({
+    name: "evidence.txt",
+    mimeType: "text/plain",
+    buffer: Buffer.from("Missing product link."),
+  });
   await a.getByRole("button", { name: "Открыть спор", exact: true }).click();
   await expect(a.locator(".deal-status")).toContainText("Спор");
   await expect(
@@ -173,6 +211,83 @@ test("file brief → dispute → support message → administrator refund", asyn
   await m.getByRole("button", { name: "Вынести решение" }).click();
   await expect(m.locator(".deal-status")).toContainText("Возврат");
   await m.screenshot({ path: "../tmp/arbitration-refund.png", fullPage: true });
+  await ad.close();
+  await blog.close();
+  await admin.close();
+});
+
+test("campaign → persisted response → linked proposal; moderator blocks and unblocks", async ({
+  browser,
+}) => {
+  const ad = await browser.newContext(),
+    blog = await browser.newContext(),
+    admin = await browser.newContext();
+  const a = await ad.newPage(),
+    b = await blog.newPage(),
+    m = await admin.newPage();
+  await login(a, "e2e_ad");
+  await a.goto("/#/campaigns");
+  await a.getByRole("button", { name: "Новая кампания" }).click();
+  const title = "Учебный подбор " + Date.now();
+  await a.getByLabel("Название", { exact: true }).fill(title);
+  await a.getByLabel("Тематика", { exact: true }).fill("Технологии");
+  await a.getByLabel("Общий бюджет, ₽").fill("20000");
+  const now = new Date();
+  await a
+    .getByLabel("Начало", { exact: true })
+    .fill(now.toISOString().slice(0, 10));
+  await a
+    .getByLabel("Окончание", { exact: true })
+    .fill(new Date(now.getTime() + 7 * 86400000).toISOString().slice(0, 10));
+  await a
+    .getByLabel("Продукт, формат и требования")
+    .fill("Учебный продукт без подключения к платформам");
+  await a.getByRole("button", { name: "Создать и подобрать блогеров" }).click();
+  const card = a
+    .locator(".campaign-card")
+    .filter({ has: a.getByRole("heading", { name: title, exact: true }) });
+  await expect(card).toBeVisible();
+  await login(b, "e2e_blogger");
+  await b.goto("/#/campaigns");
+  const blogCard = b
+    .locator(".campaign-card")
+    .filter({ has: b.getByRole("heading", { name: title, exact: true }) });
+  await blogCard
+    .getByRole("button", { name: "Откликнуться", exact: true })
+    .click();
+  await b.reload();
+  await expect(
+    blogCard.getByRole("button", { name: "Отклик отправлен", exact: true }),
+  ).toBeDisabled();
+  await a.reload();
+  await card.locator(".campaign-responses a").click();
+  await expect(a.getByLabel("Кампания (необязательно)")).toHaveValue(/\d+/);
+  await login(m, "e2e_admin");
+  await m.getByRole("link", { name: "Модерация", exact: true }).click();
+  await m.getByLabel("Поиск пользователя").fill("e2e_blogger");
+  await m.getByRole("button", { name: "Найти пользователя" }).click();
+  const member = m
+    .locator(".moderation-card")
+    .filter({
+      has: m.getByRole("heading", { name: "e2e_blogger", exact: true }),
+    });
+  await member.getByLabel("Действие для e2e_blogger").selectOption("verify");
+  await member.getByRole("button", { name: "Применить" }).click();
+  await expect(
+    member.getByText("Профиль подтверждён", { exact: true }),
+  ).toBeVisible();
+  await member.getByLabel("Действие для e2e_blogger").selectOption("block");
+  await member.getByRole("button", { name: "Применить" }).click();
+  await expect(member.getByText("Заблокирован", { exact: true })).toBeVisible();
+  await m.screenshot({ path: "../tmp/moderation-desktop.png", fullPage: true });
+  await member.getByLabel("Действие для e2e_blogger").selectOption("unblock");
+  await member.getByRole("button", { name: "Применить" }).click();
+  await expect(member.getByText("Активен", { exact: true })).toBeVisible();
+  await member.getByLabel("Действие для e2e_blogger").selectOption("unverify");
+  await member.getByRole("button", { name: "Применить" }).click();
+  await expect(
+    member.getByText("Профиль подтверждён", { exact: true }),
+  ).toHaveCount(0);
   await ad.close();
   await blog.close();
   await admin.close();

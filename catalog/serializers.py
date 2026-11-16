@@ -108,6 +108,7 @@ class ProfileSerializer(BloggerSerializer):
 
 class CampaignSerializer(serializers.ModelSerializer):
     responses = serializers.SerializerMethodField()
+    matched_profiles = serializers.SerializerMethodField()
     class Meta:
         model = Campaign
         fields = '__all__'
@@ -124,6 +125,11 @@ class CampaignSerializer(serializers.ModelSerializer):
         if request and request.user.pk != obj.advertiser_id:
             responses = responses.filter(blogger__user=request.user)
         return [{'id':r.pk,'blogger':r.blogger_id,'username':r.blogger.user.username,'created_at':r.created_at} for r in responses]
+    def get_matched_profiles(self, obj) -> list[dict]:
+        request = self.context.get('request')
+        if request and request.user.pk != obj.advertiser_id:
+            return []
+        return [{'id':b.pk,'name':b.user.first_name or b.user.username,'price':b.price} for b in obj.matched_bloggers.filter(user__is_active=True).select_related('user')]
 
 
 class ProposalSerializer(serializers.ModelSerializer):

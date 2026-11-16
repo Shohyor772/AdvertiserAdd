@@ -142,7 +142,7 @@ REST_FRAMEWORK = {
     'DEFAULT_THROTTLE_RATES': {'anon': '120/min', 'user': '600/min', 'login': '10/min'},
 }
 SIMPLE_JWT = {'ACCESS_TOKEN_LIFETIME': timedelta(minutes=30), 'REFRESH_TOKEN_LIFETIME': timedelta(days=1), 'ROTATE_REFRESH_TOKENS': True, 'BLACKLIST_AFTER_ROTATION': True}
-SPECTACULAR_SETTINGS = {'TITLE': 'Blogger Marketplace API', 'VERSION': '1.0.0', 'COMPONENT_SPLIT_REQUEST': True, 'ENUM_NAME_OVERRIDES': {'DisputeDecisionEnum':['blogger','advertiser'], 'UserRoleEnum':['blogger','advertiser','admin']}}
+SPECTACULAR_SETTINGS = {'TITLE': 'Blogger Marketplace API', 'VERSION': '1.0.0', 'COMPONENT_SPLIT_REQUEST': True, 'ENUM_NAME_OVERRIDES': {'DisputeDecisionEnum':['blogger','advertiser'], 'UserRoleEnum':[('blogger','Блогер'),('advertiser','Рекламодатель'),('admin','Администратор')]}}
 EMAIL_BACKEND = os.getenv('EMAIL_BACKEND', 'django.core.mail.backends.console.EmailBackend')
 EMAIL_HOST = os.getenv('EMAIL_HOST', '')
 EMAIL_PORT = int(os.getenv('EMAIL_PORT', '587'))
@@ -168,6 +168,7 @@ if EDUCATIONAL_MODE:
     CACHES = {'default': {'BACKEND': 'django.core.cache.backends.locmem.LocMemCache'}}
     SESSION_ENGINE = 'django.contrib.sessions.backends.db'
     CELERY_TASK_ALWAYS_EAGER = True
+    CELERY_BROKER_URL = 'memory://'
     EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
 LOCAL_MAINTENANCE = EDUCATIONAL_MODE and os.getenv('LOCAL_MAINTENANCE', 'true').lower() == 'true'
 CELERY_BEAT_SCHEDULE = {

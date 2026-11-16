@@ -825,6 +825,100 @@ paths:
               schema:
                 $ref: '#/components/schemas/User'
           description: ''
+  /api/moderation/:
+    get:
+      operationId: moderation_list
+      parameters:
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      tags:
+      - moderation
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedModerationUserList'
+          description: ''
+  /api/moderation/{id}/:
+    get:
+      operationId: moderation_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this пользователь.
+        required: true
+      tags:
+      - moderation
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModerationUser'
+          description: ''
+  /api/moderation/{id}/moderate/:
+    post:
+      operationId: moderation_moderate_create
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this пользователь.
+        required: true
+      tags:
+      - moderation
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ModerationActionRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ModerationActionRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ModerationActionRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModerationUser'
+          description: ''
+  /api/moderation/overview/:
+    get:
+      operationId: moderation_overview_retrieve
+      tags:
+      - moderation
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
   /api/notifications/:
     get:
       operationId: notifications_list
@@ -1624,16 +1718,6 @@ components:
       description: |-
         * `person` - Физлицо
         * `company` - Юрлицо
-    ActionEnum:
-      enum:
-      - accept
-      - reject
-      - counter
-      type: string
-      description: |-
-        * `accept` - accept
-        * `reject` - reject
-        * `counter` - counter
     Blogger:
       type: object
       properties:
@@ -1719,6 +1803,15 @@ components:
           format: date-time
           readOnly: true
           nullable: true
+        quality_checked_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        quality_report:
+          type: object
+          additionalProperties: {}
+          readOnly: true
         rating:
           type: number
           format: double
@@ -1738,6 +1831,8 @@ components:
       - fraud_status
       - id
       - is_verified
+      - quality_checked_at
+      - quality_report
       - rating
       - review_count
       - stats_updated_at
@@ -1748,6 +1843,18 @@ components:
       properties:
         id:
           type: integer
+          readOnly: true
+        responses:
+          type: array
+          items:
+            type: object
+            additionalProperties: {}
+          readOnly: true
+        matched_profiles:
+          type: array
+          items:
+            type: object
+            additionalProperties: {}
           readOnly: true
         title:
           type: string
@@ -1780,6 +1887,14 @@ components:
           type: integer
           maximum: 100
           minimum: 0
+        age_min:
+          type: integer
+          maximum: 100
+          minimum: 0
+        age_max:
+          type: integer
+          maximum: 100
+          minimum: 0
         created_at:
           type: string
           format: date-time
@@ -1801,6 +1916,8 @@ components:
       - ends_at
       - id
       - matched_bloggers
+      - matched_profiles
+      - responses
       - starts_at
       - title
     CampaignRequest:
@@ -1837,6 +1954,14 @@ components:
           minimum: 0
           format: int64
         female_percent:
+          type: integer
+          maximum: 100
+          minimum: 0
+        age_min:
+          type: integer
+          maximum: 100
+          minimum: 0
+        age_max:
           type: integer
           maximum: 100
           minimum: 0
@@ -2070,11 +2195,136 @@ components:
           type: string
           format: binary
           writeOnly: true
+    ModerationActionActionEnum:
+      enum:
+      - block
+      - unblock
+      - verify
+      - unverify
+      - grant_premium
+      - revoke_premium
+      - check
+      type: string
+      description: |-
+        * `block` - block
+        * `unblock` - unblock
+        * `verify` - verify
+        * `unverify` - unverify
+        * `grant_premium` - grant_premium
+        * `revoke_premium` - revoke_premium
+        * `check` - check
+    ModerationActionRequest:
+      type: object
+      properties:
+        action:
+          $ref: '#/components/schemas/ModerationActionActionEnum'
+      required:
+      - action
+    ModerationUser:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        username:
+          type: string
+          readOnly: true
+          title: Имя пользователя
+          description: Обязательное поле. Не более 150 символов. Только буквы, цифры
+            и символы @/./+/-/_.
+        email:
+          type: string
+          format: email
+          readOnly: true
+          title: Адрес электронной почты
+        first_name:
+          type: string
+          readOnly: true
+          title: Имя
+        user_type:
+          allOf:
+          - $ref: '#/components/schemas/UserRoleEnum'
+          readOnly: true
+        account_type:
+          allOf:
+          - $ref: '#/components/schemas/AccountTypeEnum'
+          readOnly: true
+        inn:
+          type: string
+          readOnly: true
+        inn_verified:
+          type: boolean
+          readOnly: true
+        phone:
+          type: string
+          readOnly: true
+        email_verified:
+          type: boolean
+          readOnly: true
+        notifications_enabled:
+          type: boolean
+          readOnly: true
+        is_premium:
+          type: boolean
+          readOnly: true
+        is_staff:
+          type: boolean
+          readOnly: true
+          title: Статус персонала
+          description: Отметьте, если пользователь может входить в административную
+            часть сайта.
+        is_suspended:
+          type: boolean
+          readOnly: true
+        rating:
+          type: number
+          format: double
+          nullable: true
+          readOnly: true
+        is_active:
+          type: boolean
+          readOnly: true
+          title: Активный
+          description: Отметьте, если пользователь должен считаться активным. Уберите
+            эту отметку вместо удаления учётной записи.
+        blogger:
+          type: object
+          additionalProperties: {}
+          nullable: true
+          readOnly: true
+      required:
+      - account_type
+      - blogger
+      - email
+      - email_verified
+      - first_name
+      - id
+      - inn
+      - inn_verified
+      - is_active
+      - is_premium
+      - is_staff
+      - is_suspended
+      - notifications_enabled
+      - phone
+      - rating
+      - user_type
+      - username
+    NegotiationActionEnum:
+      enum:
+      - accept
+      - reject
+      - counter
+      type: string
+      description: |-
+        * `accept` - accept
+        * `reject` - reject
+        * `counter` - counter
     NegotiationRequest:
       type: object
       properties:
         action:
-          $ref: '#/components/schemas/ActionEnum'
+          $ref: '#/components/schemas/NegotiationActionEnum'
         price:
           type: integer
           minimum: 1
@@ -2177,6 +2427,29 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Deal'
+    PaginatedModerationUserList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/ModerationUser'
     PaginatedNotificationList:
       type: object
       required:
@@ -2445,6 +2718,15 @@ components:
           format: date-time
           readOnly: true
           nullable: true
+        quality_checked_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        quality_report:
+          type: object
+          additionalProperties: {}
+          readOnly: true
         rating:
           type: number
           format: double
@@ -2466,6 +2748,8 @@ components:
       - fraud_status
       - id
       - is_verified
+      - quality_checked_at
+      - quality_report
       - rating
       - review_count
       - stats_updated_at
@@ -2771,7 +3055,7 @@ components:
           maxLength: 150
         user_type:
           allOf:
-          - $ref: '#/components/schemas/UserUserTypeEnum'
+          - $ref: '#/components/schemas/UserRoleEnum'
           readOnly: true
         account_type:
           allOf:
@@ -2800,6 +3084,9 @@ components:
           title: Статус персонала
           description: Отметьте, если пользователь может входить в административную
             часть сайта.
+        is_suspended:
+          type: boolean
+          readOnly: true
         rating:
           type: number
           format: double
@@ -2814,10 +3101,11 @@ components:
       - inn_verified
       - is_premium
       - is_staff
+      - is_suspended
       - rating
       - user_type
       - username
-    UserUserTypeEnum:
+    UserRoleEnum:
       enum:
       - blogger
       - advertiser

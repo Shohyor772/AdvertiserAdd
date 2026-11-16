@@ -66,6 +66,15 @@ class EducationalTests(APITestCase):
         self.assertEqual(Notification.objects.filter(user=self.b,text__startswith='Локальная проверка').count(),1)
         self.assertEqual(self.client.post(f'/api/moderation/{self.b.pk}/moderate/',{'action':'verify'}).status_code,400)
 
+    def test_premium_access_is_managed_by_moderator(self):
+        self.client.force_authenticate(self.ad)
+        self.assertEqual(self.client.get('/api/analytics/').status_code,403)
+        self.client.force_authenticate(self.staff)
+        self.assertEqual(self.client.post(f'/api/moderation/{self.ad.pk}/moderate/',{'action':'grant_premium'}).status_code,200)
+        self.ad.refresh_from_db()
+        self.client.force_authenticate(self.ad)
+        self.assertEqual(self.client.get('/api/analytics/').status_code,200)
+
     def test_campaign_response_is_persistent_unique_and_visible_to_owner(self):
         c=Campaign.objects.create(advertiser=self.ad,title='Фитнес',description='Спорт',category='Фитнес',budget=5000,starts_at=timezone.localdate(),ends_at=timezone.localdate()+timedelta(days=5))
         match_campaign(c.pk)

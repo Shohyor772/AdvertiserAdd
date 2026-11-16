@@ -42,7 +42,7 @@ def agreement(proposal, user):
 @transaction.atomic
 def confirm_test_payment(deal_id, user):
     if settings.PAYMENT_MODE != 'test' or not settings.DEBUG:
-        raise ValidationError('Тестовая оплата отключена. Подключите платёжного провайдера.')
+        raise ValidationError('Учебные сделки отключены в настройках приложения.')
     deal = Deal.objects.select_for_update(of=('self',)).select_related('proposal__blogger').get(pk=deal_id)
     if user.pk != deal.proposal.advertiser_id:
         raise PermissionDenied()
@@ -63,7 +63,7 @@ def settle_locked(deal, refund=False):
         raise ValidationError('Для сделки нет зарезервированных средств.')
     # A production payout adapter must perform real transfer before marking paid.
     if not deal.payment.is_test:
-        raise ValidationError('Реальные выплаты требуют подключённого провайдера выплат.')
+        raise ValidationError('Эта версия поддерживает только учебные сделки.')
     kind = 'refund' if refund else 'payout'
     LedgerEntry.objects.create(deal=deal, kind=kind, amount=deal.amount if refund else deal.amount-deal.commission)
     if not refund:

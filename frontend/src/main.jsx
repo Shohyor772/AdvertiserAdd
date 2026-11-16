@@ -128,7 +128,7 @@ function Badge({ b }) {
 function Avatar({ name, size = "normal", id = 0, src }) {
   return (
     <div className={`avatar ${size} tone-${Number(id) % 5}`}>
-      {src ? (
+      {src?.startsWith("/") ? (
         <img
           src={src}
           alt=""
@@ -199,7 +199,7 @@ function Field({ label, name, type = "text", ...props }) {
   );
 }
 function Select({ label, name, children, ...props }) {
-  const id=React.useId();
+  const id = React.useId();
   return (
     <div className="field">
       <label htmlFor={id}>{label}</label>
@@ -320,6 +320,7 @@ function App() {
     ["/chats", MessageSquare, "Сообщения"],
     ["/analytics", ChartNoAxesCombined, "Аналитика"],
   ];
+  if (user?.is_staff) links.push(["/moderation", ShieldCheck, "Модерация"]);
   let content;
   if (!ready) content = <Loading />;
   else if (route.startsWith("/verify")) content = <Verify route={route} />;
@@ -335,6 +336,7 @@ function App() {
   else if (route.startsWith("/login") || route === "/register")
     content = (
       <Auth
+        educational={opts.educational_mode !== false}
         register={route === "/register"}
         onLogin={(u) => {
           setUser(u);
@@ -343,7 +345,13 @@ function App() {
       />
     );
   else if (route.startsWith("/bloggers/"))
-    content = <BloggerDetail id={route.split("/")[2]} user={user} />;
+    content = (
+      <BloggerDetail
+        id={route.split("/")[2].split("?")[0]}
+        user={user}
+        campaignId={new URLSearchParams(route.split("?")[1]).get("campaign")}
+      />
+    );
   else if (route.startsWith("/chats/"))
     content = user ? (
       <Chat id={route.split("/")[2]} user={user} opts={opts} />
@@ -368,6 +376,8 @@ function App() {
     );
   else if (route === "/analytics")
     content = user ? <Analytics /> : <NeedLogin />;
+  else if (route === "/moderation")
+    content = user?.is_staff ? <Moderation /> : <NeedLogin />;
   else if (route === "/searches")
     content = user ? <SavedSearches /> : <NeedLogin />;
   else if (route === "/" || route.startsWith("/?"))
@@ -505,7 +515,11 @@ function App() {
           </div>
           <div className="header-actions">
             <span className="live-dot" />{" "}
-            <span className="header-caption">Ваши идеи. Их аудитория.</span>
+            <span className="header-caption">
+              {opts.educational_mode
+                ? "Учебная версия · без внешних сервисов"
+                : "Ваши идеи. Их аудитория."}
+            </span>
             {user ? (
               <>
                 <a
@@ -1062,7 +1076,22 @@ function NeedLogin() {
     </Empty>
   );
 }
-function Auth({ register, onLogin }) {
+function Auth({ register, onLogin, educational }) {
+  const [confirmation, setConfirmation] = useState(null);
+  if (confirmation)
+    return (
+      <div className="panel narrow">
+        <span className="eyebrow">УЧЕБНАЯ РЕГИСТРАЦИЯ</span>
+        <h1>Подтвердите email</h1>
+        <p>
+          Письмо во внешний почтовый сервис не отправляется. В учебной версии
+          подтвердите адрес здесь.
+        </p>
+        <a className="button primary" href={confirmation}>
+          Подтвердить учебный email <ArrowRight size={16} />
+        </a>
+      </div>
+    );
   return (
     <div className="auth-layout">
       <div className="auth-intro">
@@ -1096,8 +1125,13 @@ function Auth({ register, onLogin }) {
           onSubmit={async (fd) => {
             const d = Object.fromEntries(fd);
             if (register) {
-              await api("register/", { method: "POST", body: d });
-              go("/login?registered");
+              const result = await api("register/", {
+                method: "POST",
+                body: d,
+              });
+              if (result.verification_url)
+                setConfirmation(result.verification_url);
+              else go("/login?registered");
             } else {
               const t = await api("login/", { method: "POST", body: d });
               sessionStorage.setItem("access", t.access);
@@ -1137,8 +1171,8 @@ function Auth({ register, onLogin }) {
                 maxLength="12"
               />
               <p className="help">
-                Проверяется формат и контрольная сумма ИНН. Проверка по реестру
-                ФНС пока не подключена.
+                Проверяется формат и контрольная сумма ИНН. Учебная версия не
+                обращается к внешнему реестру.
               </p>
             </>
           )}
@@ -1152,8 +1186,9 @@ function Auth({ register, onLogin }) {
           />
           {register && (
             <p className="help">
-              После регистрации отправим письмо для подтверждения email. Для
-              локального запуска ссылка появится в консоли сервера.
+              {educational
+                ? "После регистрации появится кнопка подтверждения учебного email. Доступ к настоящему почтовому ящику не нужен."
+                : "После регистрации подтвердите email по ссылке из письма."}
             </p>
           )}
         </Form>
@@ -1300,9 +1335,14 @@ function Verify({ route }) {
   );
 }
 
-function BloggerDetail({ id, user }) {
+function BloggerDetail({ id, user, campaignId }) {
   const { data: b, error, loading } = useLoad(`bloggers/${id}/`);
+  const campaigns = useLoad(
+    user?.user_type === "advertiser" ? "campaigns/" : "options/",
+  );
   const [sent, setSent] = useState(false);
+  const [selectedCampaign,setSelectedCampaign]=useState(campaignId||'');
+  useEffect(()=>setSelectedCampaign(campaignId||''),[id,campaignId]);
   if (loading) return <Loading />;
   if (error) return <ErrorBox text={error} />;
   return (
@@ -1383,10 +1423,11 @@ function BloggerDetail({ id, user }) {
               <p className="help">
                 Статистика{" "}
                 {b.is_verified
-                  ? "проверена администратором"
-                  : "указана автором и не подтверждена API соцсети"}
+                  ? "проверена модератором учебного проекта"
+                  : "указана автором"}
                 .
               </p>
+              <QualityReport report={b.quality_report} />
               {b.forbidden_topics && (
                 <div className="info">
                   <ShieldCheck size={18} />
@@ -1397,6 +1438,20 @@ function BloggerDetail({ id, user }) {
           </div>
           <div className="panel">
             <h2>Отзывы и сотрудничество</h2>
+            {b.cooperations?.length > 0 && (
+              <div className="cooperation-history">
+                <h3>Завершённые сотрудничества</h3>
+                {b.cooperations.map((c, i) => (
+                  <div className="match-row" key={i}>
+                    <CheckCircle2 size={15} />
+                    <span>{c.advertiser}</span>
+                    <small>
+                      {new Date(c.completed_at).toLocaleDateString("ru-RU")}
+                    </small>
+                  </div>
+                ))}
+              </div>
+            )}
             {b.reviews.length ? (
               b.reviews.map((r) => (
                 <div className="review" key={r.id}>
@@ -1436,12 +1491,26 @@ function BloggerDetail({ id, user }) {
               button="Отправить предложение"
               onSubmit={async (fd) => {
                 fd.set("blogger", b.id);
+                if (!fd.get("campaign")) fd.delete("campaign");
                 if (!fd.get("attachment")?.size) fd.delete("attachment");
                 const p = await api("proposals/", { method: "POST", body: fd });
                 go("/chats/" + p.id);
                 setSent(true);
               }}
             >
+              <Select
+                label="Кампания (необязательно)"
+                name="campaign"
+                value={selectedCampaign}
+                onChange={e=>setSelectedCampaign(e.target.value)}
+              >
+                <option value="">Без кампании</option>
+                {rows(campaigns.data).map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.title}
+                  </option>
+                ))}
+              </Select>
               <Field
                 label="Ваша цена, ₽"
                 name="price"
@@ -1789,8 +1858,7 @@ function Chat({ id, user, opts }) {
                     </button>
                   ) : (
                     <div className="info">
-                      Платёжный провайдер пока не подключён. Реальная оплата
-                      недоступна.
+                      Учебные сделки отключены в настройках приложения.
                     </div>
                   ))}
                 {["in_progress", "revision"].includes(d.status) && blogger && (
@@ -2048,6 +2116,22 @@ function Campaigns({ user }) {
                 max="100"
                 defaultValue="0"
               />
+              <Field
+                label="Возраст аудитории от"
+                name="age_min"
+                type="number"
+                min="0"
+                max="100"
+                defaultValue="0"
+              />
+              <Field
+                label="Возраст аудитории до"
+                name="age_max"
+                type="number"
+                min="0"
+                max="100"
+                defaultValue="100"
+              />
             </div>
             <TextArea
               label="Продукт, формат и требования"
@@ -2078,6 +2162,39 @@ function Campaigns({ user }) {
                     Подобрано блогеров: {c.matched_bloggers.length}. Если
                     совпадений нет, проверим новые профили позже.
                   </p>
+                  {c.responses?.length > 0 && (
+                    <div className="campaign-responses">
+                      <h3>Отклики</h3>
+                      {c.responses.map((r) => (
+                        <a
+                          className="text-link"
+                          key={r.id}
+                          href={`#/bloggers/${r.blogger}?campaign=${c.id}`}
+                        >
+                          @{r.username} · Предложить интеграцию{" "}
+                          <ArrowUpRight size={14} />
+                        </a>
+                      ))}
+                    </div>
+                  )}
+                  {c.matched_profiles?.length > 0 && (
+                    <details className="campaign-matches">
+                      <summary>
+                        Подобранные авторы ({c.matched_profiles.length})
+                      </summary>
+                      {c.matched_profiles.map((b) => (
+                        <a
+                          className="match-row"
+                          key={b.id}
+                          href={`#/bloggers/${b.id}?campaign=${c.id}`}
+                        >
+                          <span>{b.name}</span>
+                          <strong>{money(b.price)}</strong>
+                          <ArrowUpRight size={14} />
+                        </a>
+                      ))}
+                    </details>
+                  )}
                   <a
                     className="text-link"
                     href={
@@ -2091,7 +2208,11 @@ function Campaigns({ user }) {
                   </a>
                 </>
               ) : (
-                <CampaignRespond id={c.id} />
+                <CampaignRespond
+                  id={c.id}
+                  responded={c.responses?.length > 0}
+                  refresh={refresh}
+                />
               )}
             </article>
           ))}
@@ -2107,24 +2228,26 @@ function Campaigns({ user }) {
     </>
   );
 }
-function CampaignRespond({ id }) {
+function CampaignRespond({ id, responded, refresh }) {
   const [result, set] = useState(""),
     [error, err] = useState("");
   return (
     <>
       <button
         className="button secondary"
-        disabled={!!result}
+        disabled={!!result || responded}
         onClick={async () => {
           try {
             await api(`campaigns/${id}/respond/`, { method: "POST" });
             set("Интерес отправлен рекламодателю");
+            await refresh();
           } catch (e) {
             err(e.message);
           }
         }}
       >
-        Откликнуться <ArrowUpRight size={15} />
+        {responded ? "Отклик отправлен" : "Откликнуться"}{" "}
+        <ArrowUpRight size={15} />
       </button>
       {result && <p className="success">{result}</p>}
       <ErrorBox text={error} />
@@ -2280,8 +2403,9 @@ function Profile({ user, setUser }) {
                   defaultValue={data.reply_template}
                 />
                 <p className="help">
-                  Ручная статистика будет отмечена как непроверенная. Для
-                  автоматического импорта понадобится подключение API соцсети.
+                  Показатели проверяются локально на аномалии после сохранения.
+                  Подключение к соцсетям не требуется. Подтвердить профиль может
+                  модератор.
                 </p>
               </Form>
             )}
@@ -2293,6 +2417,7 @@ function Profile({ user, setUser }) {
 }
 function ResendEmail({ email }) {
   const [msg, set] = useState("");
+  const [link, setLink] = useState("");
   return (
     <>
       <button
@@ -2305,14 +2430,20 @@ function ResendEmail({ email }) {
               body: { email },
             });
             set(r.detail);
+            setLink(r.verification_url || "");
           } catch (e) {
             set(e.message);
           }
         }}
       >
-        Отправить письмо подтверждения
+        Получить ссылку подтверждения
       </button>
       {msg && <p className="help">{msg}</p>}
+      {link && (
+        <a className="text-link" href={link}>
+          Подтвердить учебный email <ArrowRight size={15} />
+        </a>
+      )}
     </>
   );
 }
@@ -2430,6 +2561,185 @@ function SavedSearches() {
     </>
   );
 }
+function QualityReport({ report }) {
+  if (!report) return null;
+  return (
+    <div
+      className={
+        "quality-report " +
+        (report.status === "suspicious" ? "quality-warning" : "")
+      }
+    >
+      <h3>
+        <ShieldCheck size={17} /> Локальная проверка статистики
+      </h3>
+      <p>{report.summary}</p>
+      {report.checked_at && (
+        <small>
+          Проверено {new Date(report.checked_at).toLocaleString("ru-RU")}
+        </small>
+      )}
+      <p className="help">{report.source}</p>
+    </div>
+  );
+}
+
+function Moderation() {
+  const [selectedActions,setSelectedActions]=useState({});
+  const [page, setPage] = useState(1),
+    [search, setSearch] = useState(""),
+    [q, setQ] = useState(""),
+    [actionError, setActionError] = useState(""),
+    [busy, setBusy] = useState(false);
+  const { data, error, loading, refresh } = useLoad(
+    "moderation/?page=" + page + "&q=" + encodeURIComponent(q),
+  );
+  const overview = useLoad("moderation/overview/");
+  const act = async (id, op) => {
+    setActionError("");
+    setBusy(true);
+    try {
+      await api(`moderation/${id}/moderate/`, {
+        method: "POST",
+        body: { action: op },
+      });
+      await refresh();
+      await overview.refresh();
+    } catch (e) {
+      setActionError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <>
+      <PageHead
+        eyebrow="УПРАВЛЕНИЕ УЧЕБНОЙ ПЛАТФОРМОЙ"
+        title="Модерация"
+        description="Пользователи, проверки профилей и доступ к аналитике. Споры доступны в сообщениях и уведомлениях."
+      />
+      <div className="moderation-overview">
+        {[
+          ["Пользователей", "users"],
+          ["Заблокировано", "blocked"],
+          ["Блогеров", "bloggers"],
+          ["Кампаний", "campaigns"],
+          ["Сделок", "deals"],
+          ["Открытых споров", "open_disputes"],
+        ].map(([label, key]) => (
+          <div className="panel" key={key}>
+            <span>{label}</span>
+            <strong>{overview.data?.[key] ?? "—"}</strong>
+          </div>
+        ))}
+      </div>
+      <form
+        className="search-bar moderation-search"
+        onSubmit={(e) => {
+          e.preventDefault();
+          setPage(1);
+          setQ(search);
+        }}
+      >
+        <Search size={19} />
+        <input
+          aria-label="Поиск пользователя"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Имя, логин или email"
+        />
+        <button className="search-submit" aria-label="Найти пользователя">
+          <ArrowRight size={17} />
+        </button>
+      </form>
+      <ErrorBox text={error || actionError || overview.error} />
+      {loading ? (
+        <Loading />
+      ) : (
+        <div className="moderation-grid">
+          {rows(data).map((u) => (
+            <ModerationCard key={u.id} user={u} busy={busy} act={act} op={selectedActions[u.id]||(u.blogger?'check':'block')} setOp={op=>setSelectedActions(values=>({...values,[u.id]:op}))}/>
+          ))}
+        </div>
+      )}
+      <Pager data={data} page={page} setPage={setPage} />
+    </>
+  );
+}
+
+function ModerationCard({ user: u, busy, act, op, setOp }) {
+  return (
+    <article className="panel moderation-card">
+      <div className="moderation-identity">
+        <Avatar name={u.first_name || u.username} id={u.id} />
+        <div>
+          <h3>{u.first_name || u.username}</h3>
+          <p>
+            @{u.username} ·{" "}
+            {u.user_type === "blogger"
+              ? "Блогер"
+              : u.is_staff
+                ? "Администратор"
+                : "Рекламодатель"}
+          </p>
+        </div>
+      </div>
+      <p className="muted">{u.email || "Email не указан"}</p>
+      <div className="moderation-badges">
+        <span className={"badge " + (u.is_active ? "good" : "warn")}>
+          {u.is_suspended
+            ? "Заблокирован"
+            : u.is_active
+              ? "Активен"
+              : "Email не подтверждён"}
+        </span>
+        {u.is_premium && <span className="badge good">Аналитика открыта</span>}
+        {u.blogger?.is_verified && (
+          <span className="badge good">Профиль подтверждён</span>
+        )}
+      </div>
+      {u.blogger && (
+        <>
+          <a className="text-link" href={`#/bloggers/${u.blogger.id}`}>
+            Открыть публичный профиль <ArrowUpRight size={14} />
+          </a>
+          <QualityReport report={u.blogger.quality_report} />
+        </>
+      )}
+      {u.is_staff ? (
+        <p className="help">Учётная запись администратора защищена.</p>
+      ) : (
+        <div className="moderation-action">
+          <Select
+            label={"Действие для " + u.username}
+            value={op}
+            onChange={(e) => setOp(e.target.value)}
+          >
+            <option value="block">Заблокировать</option>
+            <option value="unblock">Разблокировать</option>
+            <option value="grant_premium">Открыть аналитику</option>
+            <option value="revoke_premium">Закрыть аналитику</option>
+            {u.blogger && (
+              <>
+                <option value="check">Проверить статистику</option>
+                <option value="verify">Подтвердить профиль</option>
+                <option value="unverify">Снять подтверждение</option>
+              </>
+            )}
+          </Select>
+          <button
+            className="button secondary"
+            disabled={busy}
+            onClick={() => act(u.id, op)}
+          >
+            Применить
+          </button>
+        </div>
+      )}
+    </article>
+  );
+}
+
 function Analytics() {
   const { data, error, loading } = useLoad("analytics/");
   return (

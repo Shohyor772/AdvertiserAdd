@@ -2559,3 +2559,154 @@ td:first-child {
     display: none;
   }
 }
+.quality-report {
+  margin: 18px 0;
+  padding: 16px;
+  border: 1px solid #e2e9dd;
+  border-radius: 8px;
+  background: #f8faf6;
+}
+.quality-report h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+.quality-report p {
+  font-size: 11px;
+  color: #7d8c75;
+  margin-bottom: 8px;
+}
+.quality-report small {
+  font-size: 9px;
+  color: #9ca793;
+}
+.quality-report .help {
+  font-size: 9px;
+  margin-bottom: 0;
+}
+.quality-warning {
+  background: #fff8ec;
+  border-color: #ebdcc0;
+}
+.quality-warning p {
+  color: #9d814f;
+}
+.moderation-overview {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 15px;
+  margin-bottom: 22px;
+}
+.moderation-overview .panel {
+  margin: 0;
+  padding: 18px;
+}
+.moderation-overview span {
+  font-size: 11px;
+  color: #919a8a;
+  display: block;
+}
+.moderation-overview strong {
+  font-size: 27px;
+  display: block;
+  margin-top: 6px;
+  font-weight: 600;
+}
+.moderation-search {
+  margin-bottom: 22px;
+}
+.moderation-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+  align-items: start;
+}
+.moderation-card {
+  margin: 0;
+}
+.moderation-identity {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+.moderation-identity h3 {
+  margin: 0;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+.moderation-identity p {
+  margin: 3px 0 0;
+  font-size: 10px;
+  color: #a0a995;
+}
+.moderation-badges {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin: 15px 0;
+}
+.moderation-action {
+  display: flex;
+  gap: 12px;
+  align-items: end;
+  margin-top: 20px;
+}
+.moderation-action .field {
+  flex: 1;
+  margin: 0;
+}
+.moderation-action .button {
+  min-height: 39px;
+}
+.campaign-responses {
+  margin: 20px 0;
+}
+.campaign-responses h3 {
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+.campaign-responses a {
+  display: flex;
+  margin: 9px 0;
+}
+.campaign-matches {
+  font-size: 11px;
+  color: #718867;
+  margin: 16px 0;
+}
+.campaign-matches summary {
+  cursor: pointer;
+}
+.match-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 11px;
+}
+.match-row strong {
+  margin-left: auto;
+  white-space: nowrap;
+  font-size: 10px;
+}
+.field > label {
+  font-size: 11px;
+  font-weight: 550;
+}
+@media (max-width: 850px) {
+  .moderation-grid {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 500px) {
+  .moderation-overview {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .moderation-action {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}

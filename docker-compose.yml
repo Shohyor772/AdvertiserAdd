@@ -10,9 +10,6 @@ services:
       - ./db.sqlite3:/app/db.sqlite3
       - ./media:/app/media
       - ./backups:/app/backups
-    depends_on:
-      redis:
-        condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/')"]
       interval: 30s
@@ -20,6 +17,7 @@ services:
       retries: 3
     restart: unless-stopped
   redis:
+    profiles: [infrastructure]
     image: redis:7-alpine
     command: ["redis-server", "--appendonly", "yes"]
     volumes:
@@ -31,6 +29,7 @@ services:
       retries: 10
     restart: unless-stopped
   worker:
+    profiles: [infrastructure]
     build: .
     command: celery -A config worker --loglevel=info
     env_file: .env
@@ -45,6 +44,7 @@ services:
         condition: service_healthy
     restart: unless-stopped
   beat:
+    profiles: [infrastructure]
     build: .
     command: celery -A config beat --loglevel=info --schedule=/schedule/celerybeat
     env_file: .env
