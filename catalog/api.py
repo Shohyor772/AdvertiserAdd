@@ -15,6 +15,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.throttling import AnonRateThrottle
 from rest_framework_simplejwt.tokens import RefreshToken
+from drf_spectacular.utils import extend_schema, inline_serializer, OpenApiTypes, OpenApiParameter
 from .models import *
 from .serializers import *
 from .search import search_bloggers, SearchParams
@@ -25,6 +26,7 @@ class LoginThrottle(AnonRateThrottle):
     scope = 'login'
 
 
+@extend_schema(request=RegisterSerializer, responses={201: OpenApiTypes.OBJECT})
 @api_view(['POST'])
 @permission_classes([AllowAny])
 @throttle_classes([LoginThrottle])
@@ -39,6 +41,7 @@ def register(request):
     return Response({'detail': 'Письмо отправлено. Подтвердите email для входа.'}, status=201)
 
 
+@extend_schema(request=inline_serializer('EmailToken', fields={'token': serializers.CharField()}), responses=OpenApiTypes.OBJECT)
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def verify_email(request):
@@ -55,6 +58,20 @@ def verify_email(request):
     return Response({'detail': 'Email подтверждён. Теперь можно войти.'})
 
 
+@extend_schema(request=inline_serializer('ResendEmail', fields={'email': serializers.EmailField()}), responses=OpenApiTypes.OBJECT)
+@api_view(['POST'])
+@permission_classes([AllowAny])
+@throttle_classes([LoginThrottle])
+def resend_email(request):
+    email = serializers.EmailField().run_validation(request.data.get('email'))
+    user = User.objects.filter(email__iexact=email).first()
+    if user and not user.email_verified:
+        token = signing.dumps({'uid': user.pk, 'email': user.email}, salt='email-confirm')
+        send_mail('Подтвердите email — Blogger Marketplace', 'Откройте: '+settings.PUBLIC_URL+'/#/verify?token='+token, settings.DEFAULT_FROM_EMAIL, [user.email])
+    return Response({'detail': 'Если адрес зарегистрирован, письмо подтверждения отправлено.'})
+
+
+@extend_schema(request=UserSerializer, responses=UserSerializer)
 @api_view(['GET', 'PATCH'])
 def me(request):
     if request.method == 'PATCH':
@@ -64,6 +81,7 @@ def me(request):
     return Response(UserSerializer(request.user).data)
 
 
+@extend_schema(request=ProfileSerializer, responses=ProfileSerializer)
 @api_view(['GET', 'PATCH'])
 def profile(request):
     require_role(request.user, 'blogger')
@@ -75,6 +93,7 @@ def profile(request):
     return Response(s.data)
 
 
+@extend_schema(request=inline_serializer('Logout', fields={'refresh': serializers.CharField()}), responses={204: None})
 @api_view(['POST'])
 def logout(request):
     try:
@@ -89,6 +108,7 @@ def logout(request):
     return Response(status=204)
 
 
+@extend_schema(responses=OpenApiTypes.OBJECT)
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def options(request):
@@ -162,7 +182,7 @@ class ProposalViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     @transaction.atomic
     def negotiate(self, request, pk=None):
-        p = self.get_queryset().select_for_update().get(pk=self.get_object().pk)
+        p = self.get_queryset().select_for_update(of=('self',)).get(pk=self.get_object().pk)
         participant(p, request.user)
         if p.status != 'sent':
             raise ValidationError('Переговоры уже закрыты.')
@@ -201,7 +221,7 @@ class DealViewSet(viewsets.ReadOnlyModelViewSet):
     @action(detail=True, methods=['post'])
     @transaction.atomic
     def submit(self, request, pk=None):
-        d = self.get_queryset().select_for_update().get(pk=self.get_object().pk)
+        d = self.get_queryset().select_for_update(of=('self',)).get(pk=self.get_object().pk)
         if request.user.pk != d.proposal.blogger.user_id:
             raise PermissionDenied()
         if d.status not in ['in_progress', 'revision']:
@@ -220,7 +240,7 @@ class DealViewSet(viewsets.ReadOnlyModelViewSet):
     @action(detail=True, methods=['post'])
     @transaction.atomic
     def revise(self, request, pk=None):
-        d = self.get_queryset().select_for_update().get(pk=self.get_object().pk)
+        d = self.get_queryset().select_for_update(of=('self',)).get(pk=self.get_object().pk)
         if request.user.pk != d.proposal.advertiser_id:
             raise PermissionDenied()
         if d.status != 'submitted':
@@ -233,7 +253,7 @@ class DealViewSet(viewsets.ReadOnlyModelViewSet):
     @action(detail=True, methods=['post'])
     @transaction.atomic
     def dispute(self, request, pk=None):
-        d = self.get_queryset().select_for_update().get(pk=self.get_object().pk)
+        d = self.get_queryset().select_for_update(of=('self',)).get(pk=self.get_object().pk)
         if request.user.pk != d.proposal.advertiser_id:
             raise PermissionDenied()
         if d.status not in ['submitted', 'revision', 'in_progress'] or hasattr(d, 'dispute'):
@@ -256,7 +276,7 @@ class ReviewViewSet(viewsets.ModelViewSet):
         return Review.objects.select_related('author').order_by('-created_at')
     @transaction.atomic
     def perform_create(self, serializer):
-        d = Deal.objects.select_for_update().select_related('proposal__blogger').get(pk=serializer.validated_data['deal'].pk)
+        d = Deal.objects.select_for_update(of=('self',)).select_related('proposal__blogger').get(pk=serializer.validated_data['deal'].pk)
         participant(d.proposal, self.request.user)
         if d.status != 'completed':
             raise ValidationError('Отзыв доступен после завершения сделки.')
@@ -285,6 +305,15 @@ class CampaignViewSet(viewsets.ModelViewSet):
         c = serializer.save(advertiser=self.request.user)
         from .tasks import match_campaign
         transaction.on_commit(lambda: match_campaign.delay(c.pk))
+    @action(detail=True, methods=['post'])
+    def respond(self, request, pk=None):
+        require_role(request.user, 'blogger')
+        c = self.get_object()
+        from django.core.cache import cache
+        if cache.add(f'campaign-interest:{c.pk}:{request.user.pk}', True, timeout=86400):
+            profile = get_object_or_404(BloggerProfile, user=request.user)
+            notify(c.advertiser_id, f'{request.user.username} откликнулся на «{c.title}»', f'#/bloggers/{profile.pk}')
+        return Response({'detail': 'Отклик отправлен рекламодателю.'})
 
 
 class NotificationViewSet(viewsets.ModelViewSet):
@@ -315,6 +344,7 @@ class SavedSearchViewSet(viewsets.ModelViewSet):
         serializer.save(filters=params.validated_data)
 
 
+@extend_schema(request=inline_serializer('DisputeDecision', fields={'decision': serializers.ChoiceField(choices=['blogger', 'advertiser']), 'resolution': serializers.CharField()}), responses=DisputeSerializer)
 @api_view(['POST'])
 def resolve(request, pk):
     d = get_object_or_404(Dispute, pk=pk)
@@ -322,6 +352,7 @@ def resolve(request, pk):
     return Response(DisputeSerializer(result).data)
 
 
+@extend_schema(responses=OpenApiTypes.BINARY)
 @api_view(['GET'])
 def download(request, kind, pk):
     if kind == 'brief':
@@ -341,6 +372,7 @@ def download(request, kind, pk):
     return FileResponse(f.open('rb'), as_attachment=True, filename=Path(f.name).name, content_type='application/octet-stream')
 
 
+@extend_schema(responses=inline_serializer('CategoryAnalytics', fields={'category': serializers.CharField(), 'count': serializers.IntegerField(), 'average_cpm': serializers.FloatField(), 'average_price': serializers.FloatField()}, many=True))
 @api_view(['GET'])
 def analytics(request):
     if not request.user.is_premium and not request.user.is_staff:

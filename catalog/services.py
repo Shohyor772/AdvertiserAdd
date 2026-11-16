@@ -43,7 +43,7 @@ def agreement(proposal, user):
 def confirm_test_payment(deal_id, user):
     if settings.PAYMENT_MODE != 'test' or not settings.DEBUG:
         raise ValidationError('Тестовая оплата отключена. Подключите платёжного провайдера.')
-    deal = Deal.objects.select_for_update().select_related('proposal__blogger').get(pk=deal_id)
+    deal = Deal.objects.select_for_update(of=('self',)).select_related('proposal__blogger').get(pk=deal_id)
     if user.pk != deal.proposal.advertiser_id:
         raise PermissionDenied()
     if deal.status != 'awaiting_payment':
@@ -79,7 +79,7 @@ def settle_locked(deal, refund=False):
 
 @transaction.atomic
 def complete(deal_id, user=None, automatic=False):
-    deal = Deal.objects.select_for_update().select_related('proposal__blogger', 'payment').get(pk=deal_id)
+    deal = Deal.objects.select_for_update(of=('self',)).select_related('proposal__blogger', 'payment').get(pk=deal_id)
     if user and user.pk != deal.proposal.advertiser_id:
         raise PermissionDenied()
     if deal.status != 'submitted':
@@ -96,8 +96,8 @@ def resolve_dispute(dispute_id, admin, decision, reason):
         raise PermissionDenied()
     # Always lock the deal first; other actions use the same lock order.
     did = Dispute.objects.get(pk=dispute_id).deal_id
-    deal = Deal.objects.select_for_update().select_related('proposal__blogger', 'payment').get(pk=did)
-    dispute = Dispute.objects.select_for_update().get(pk=dispute_id)
+    deal = Deal.objects.select_for_update(of=('self',)).select_related('proposal__blogger', 'payment').get(pk=did)
+    dispute = Dispute.objects.select_for_update(of=('self',)).get(pk=dispute_id)
     if deal.status != 'disputed' or dispute.resolved_at:
         raise ValidationError('Спор уже закрыт.')
     if decision not in ['blogger', 'advertiser'] or not reason.strip():

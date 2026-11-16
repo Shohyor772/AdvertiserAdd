@@ -32,7 +32,7 @@ class UserSerializer(serializers.ModelSerializer):
         model = User
         fields = ['id', 'username', 'email', 'first_name', 'user_type', 'account_type', 'inn', 'phone', 'email_verified', 'notifications_enabled', 'is_premium', 'is_staff', 'rating']
         read_only_fields = ['id', 'username', 'email', 'user_type', 'account_type', 'inn', 'email_verified', 'is_premium', 'is_staff']
-    def get_rating(self, obj):
+    def get_rating(self, obj) -> float | None:
         return obj.received_reviews.aggregate(value=Avg('rating'))['value']
 
 
@@ -72,13 +72,13 @@ class BloggerSerializer(serializers.ModelSerializer):
         model = BloggerProfile
         fields = ['id', 'user_id', 'username', 'display_name', 'platform', 'subscribers', 'price', 'category', 'is_verified', 'city', 'bio', 'channel_url', 'views', 'engagement_rate', 'female_percent', 'age_min', 'age_max', 'forbidden_topics', 'fraud_status', 'stats_updated_at', 'rating', 'review_count', 'cpm']
         read_only_fields = ['user_id', 'is_verified', 'fraud_status', 'stats_updated_at']
-    def get_display_name(self, obj):
+    def get_display_name(self, obj) -> str:
         return obj.user.first_name or obj.user.username
-    def get_rating(self, obj):
+    def get_rating(self, obj) -> float | None:
         return getattr(obj, 'rating_value', None) if hasattr(obj, 'rating_value') else obj.user.received_reviews.aggregate(value=Avg('rating'))['value']
-    def get_review_count(self, obj):
+    def get_review_count(self, obj) -> int:
         return getattr(obj, 'reviews_count', None) if hasattr(obj, 'reviews_count') else obj.user.received_reviews.count()
-    def get_cpm(self, obj):
+    def get_cpm(self, obj) -> float | None:
         return round(obj.price * 1000 / obj.views, 2) if obj.views else None
     def validate(self, data):
         for key in ['price', 'subscribers', 'views']:
@@ -117,7 +117,7 @@ class ProposalSerializer(serializers.ModelSerializer):
         model = Proposal
         fields = ['id', 'blogger', 'blogger_name', 'blogger_user_id', 'advertiser', 'advertiser_name', 'price', 'message', 'attachment', 'attachment_name', 'status', 'counter_price', 'last_offer_by', 'campaign', 'created_at']
         read_only_fields = ['advertiser', 'status', 'counter_price', 'last_offer_by', 'created_at']
-    def get_attachment_name(self, obj):
+    def get_attachment_name(self, obj) -> str:
         return Path(obj.attachment.name).name if obj.attachment else ''
     def validate(self, data):
         user = self.context['request'].user
@@ -142,7 +142,7 @@ class MessageSerializer(serializers.ModelSerializer):
         model = ChatMessage
         fields = ['id', 'sender', 'sender_name', 'text', 'attachment', 'attachment_name', 'created_at']
         read_only_fields = ['sender', 'created_at']
-    def get_attachment_name(self, obj):
+    def get_attachment_name(self, obj) -> str:
         return Path(obj.attachment.name).name if obj.attachment else ''
     def validate(self, data):
         if not data.get('text', '').strip() and not data.get('attachment'):
@@ -158,9 +158,9 @@ class DealSerializer(serializers.ModelSerializer):
         model = Deal
         fields = ['id', 'proposal', 'amount', 'commission', 'status', 'status_label', 'publication_url', 'revision_reason', 'submitted_at', 'completed_at', 'payment_status', 'is_test']
         read_only_fields = fields
-    def get_payment_status(self, obj):
+    def get_payment_status(self, obj) -> str | None:
         return obj.payment.status if hasattr(obj, 'payment') else None
-    def get_is_test(self, obj):
+    def get_is_test(self, obj) -> bool | None:
         return obj.payment.is_test if hasattr(obj, 'payment') else None
 
 

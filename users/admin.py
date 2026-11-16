@@ -5,7 +5,7 @@ from .models import User
 class CustomUserAdmin(UserAdmin):
     # Добавляем наши поля в форму редактирования
     fieldsets = UserAdmin.fieldsets + (
-        ('Дополнительная информация', {'fields': ('user_type', 'phone')}),
+        ('Дополнительная информация', {'fields': ('user_type', 'phone', 'account_type', 'inn', 'email_verified', 'notifications_enabled', 'is_premium')}),
     )
     # Добавляем наши поля в форму создания нового пользователя
     add_fieldsets = UserAdmin.add_fieldsets + (

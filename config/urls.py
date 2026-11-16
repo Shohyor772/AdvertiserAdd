@@ -21,6 +21,7 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/register/', api.register),
     path('api/verify-email/', api.verify_email),
+    path('api/resend-email/', api.resend_email),
     path('api/login/', LoginView.as_view()),
     path('api/token/refresh/', TokenRefreshView.as_view()),
     path('api/logout/', api.logout),
