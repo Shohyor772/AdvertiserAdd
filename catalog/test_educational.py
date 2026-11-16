@@ -102,3 +102,11 @@ class EducationalTests(APITestCase):
             run_cycle();run_cycle()
             self.assertEqual(accept.call_count,2);self.assertEqual(refresh.call_count,2)
             backup.assert_called_once_with('backup_database',verbosity=0)
+
+    def test_api_docs_use_local_assets(self):
+        self.client.force_authenticate(self.staff)
+        r=self.client.get('/api/docs/')
+        self.assertEqual(r.status_code,200)
+        content=r.content.decode('utf-8')
+        self.assertIn('/static/drf_spectacular_sidecar/',content)
+        self.assertNotIn('cdn.jsdelivr.net',content)
