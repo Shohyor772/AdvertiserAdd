@@ -1,0 +1,9 @@
+{
+  "kind": "in-process Django test client; SQLite; sequential warm requests",
+  "profile_count": 5000,
+  "requests": 30,
+  "mean_ms": 15.26,
+  "p95_ms": 17.36,
+  "max_ms": 24.19,
+  "sla_or_50000_concurrent_users_proven": false
+}

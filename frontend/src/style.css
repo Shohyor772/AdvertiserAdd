@@ -2535,4 +2535,27 @@ td:first-child {
     scroll-behavior: auto !important;
   }
 }
-.avatar img{width:100%;height:100%;object-fit:cover;border-radius:inherit}.social-buttons{margin:20px 0;padding-top:16px;border-top:1px solid var(--line)}.social-buttons>.button{margin:0 5px 8px 0;width:auto}.export-link{margin-left:auto;font-size:9px}@media(max-width:650px){.export-link{display:none}}
+.avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: inherit;
+}
+.social-buttons {
+  margin: 20px 0;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+.social-buttons > .button {
+  margin: 0 5px 8px 0;
+  width: auto;
+}
+.export-link {
+  margin-left: auto;
+  font-size: 9px;
+}
+@media (max-width: 650px) {
+  .export-link {
+    display: none;
+  }
+}

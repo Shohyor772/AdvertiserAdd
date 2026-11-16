@@ -18,6 +18,7 @@ class LoginView(TokenObtainPairView):
     throttle_classes = [api.LoginThrottle]
 
 urlpatterns = [
+    path('health/', views.health),
     path('admin/', admin.site.urls),
     path('api/register/', api.register),
     path('api/auth/google/start/', social.google_start),

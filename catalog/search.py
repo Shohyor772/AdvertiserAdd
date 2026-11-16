@@ -1,4 +1,4 @@
-from django.db.models import Avg, Count, Q
+from django.db.models import Avg, Count, Q, F
 from rest_framework import serializers
 from .models import BloggerProfile
 
@@ -50,4 +50,6 @@ def search_bloggers(params):
     if d.get('verified'):
         qs = qs.filter(is_verified=True)
     ordering = {'-rating': '-rating_value', 'rating': 'rating_value', 'username': 'user__username'}.get(d.get('ordering'), d.get('ordering', '-subscribers'))
+    if ordering in ['rating_value', '-rating_value']:
+        ordering = F('rating_value').desc(nulls_last=True) if ordering.startswith('-') else F('rating_value').asc(nulls_last=True)
     return qs.order_by(ordering, 'id')

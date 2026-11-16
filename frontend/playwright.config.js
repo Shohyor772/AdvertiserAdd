@@ -16,8 +16,8 @@ export default defineConfig({
   ],
   outputDir: "../tmp/playwright-results",
   webServer: {
-    command: '..\\venv\\Scripts\\python.exe -u ..\\manage.py runserver 127.0.0.1:8002 --noreload --settings=config.e2e_settings',
-    url: 'http://127.0.0.1:8002/api/options/',
+    command: process.platform==='win32' ? "..\\venv\\Scripts\\python.exe -u ..\\manage.py runserver 127.0.0.1:8002 --noreload --settings=config.e2e_settings" : '../venv/bin/python -u ../manage.py runserver 127.0.0.1:8002 --noreload --settings=config.e2e_settings',
+    url: "http://127.0.0.1:8002/api/options/",
     reuseExistingServer: false,
     timeout: 30000,
   },

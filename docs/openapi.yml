@@ -1949,6 +1949,9 @@ components:
         id:
           type: integer
           readOnly: true
+        evidence_name:
+          type: string
+          readOnly: true
         reason:
           type: string
         decision:
@@ -1978,6 +1981,7 @@ components:
       - created_at
       - deal
       - decision
+      - evidence_name
       - id
       - reason
       - resolution

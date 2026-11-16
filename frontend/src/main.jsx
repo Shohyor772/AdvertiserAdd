@@ -128,7 +128,19 @@ function Badge({ b }) {
 function Avatar({ name, size = "normal", id = 0, src }) {
   return (
     <div className={`avatar ${size} tone-${Number(id) % 5}`}>
-      {src ? <img src={src} alt="" loading="lazy" referrerPolicy="no-referrer" onError={e=>{e.currentTarget.style.display='none'}}/> : (name || "?").slice(0, 2).toUpperCase()}
+      {src ? (
+        <img
+          src={src}
+          alt=""
+          loading="lazy"
+          referrerPolicy="no-referrer"
+          onError={(e) => {
+            e.currentTarget.style.display = "none";
+          }}
+        />
+      ) : (
+        (name || "?").slice(0, 2).toUpperCase()
+      )}
     </div>
   );
 }
@@ -187,13 +199,14 @@ function Field({ label, name, type = "text", ...props }) {
   );
 }
 function Select({ label, name, children, ...props }) {
+  const id=React.useId();
   return (
-    <label className="field">
-      <span>{label}</span>
-      <select name={name} {...props}>
+    <div className="field">
+      <label htmlFor={id}>{label}</label>
+      <select id={id} name={name} {...props}>
         {children}
       </select>
-    </label>
+    </div>
   );
 }
 function TextArea({ label, name, ...props }) {
@@ -310,7 +323,15 @@ function App() {
   let content;
   if (!ready) content = <Loading />;
   else if (route.startsWith("/verify")) content = <Verify route={route} />;
-  else if (route.startsWith('/oauth')) content = <SocialExchange onLogin={u=>{setUser(u);go('/profile')}}/>;
+  else if (route.startsWith("/oauth"))
+    content = (
+      <SocialExchange
+        onLogin={(u) => {
+          setUser(u);
+          go("/profile");
+        }}
+      />
+    );
   else if (route.startsWith("/login") || route === "/register")
     content = (
       <Auth
@@ -848,7 +869,16 @@ function Catalog({ user, opts, route }) {
               {loading ? "Ищем авторов…" : `Авторов: ${data?.count || 0}`}
               <span> в каталоге</span>
             </strong>
-            {user?.user_type==='advertiser'&&<button className="text-link export-link" onClick={()=>downloadCatalog(applied).catch(e=>setSaveError(e.message))}>Экспорт CSV <ArrowUpRight size={14}/></button>}
+            {user?.user_type === "advertiser" && (
+              <button
+                className="text-link export-link"
+                onClick={() =>
+                  downloadCatalog(applied).catch((e) => setSaveError(e.message))
+                }
+              >
+                Экспорт CSV <ArrowUpRight size={14} />
+              </button>
+            )}
             <button
               className="filter-mobile"
               onClick={() => setShowFilters(!showFilters)}
@@ -963,7 +993,12 @@ function BloggerCard({ b }) {
       </div>
       <div className="card-body">
         <div className="card-identity">
-          <Avatar name={b.display_name} id={b.id} size="large" src={b.avatar_url}/>
+          <Avatar
+            name={b.display_name}
+            id={b.id}
+            size="large"
+            src={b.avatar_url}
+          />
           <span className="rating">
             <Star size={13} />
             {b.rating ? Number(b.rating).toFixed(1) : "Новый"}
@@ -1050,7 +1085,11 @@ function Auth({ register, onLogin }) {
             ? "Выберите роль и заполните данные."
             : "Продолжите работу с вашими интеграциями."}
         </p>
-        {location.hash.includes('registered') && <div className="info">Письмо отправлено. Подтвердите email перед входом.</div>}
+        {location.hash.includes("registered") && (
+          <div className="info">
+            Письмо отправлено. Подтвердите email перед входом.
+          </div>
+        )}
         <Form
           key={register ? "register" : "login"}
           button={register ? "Зарегистрироваться" : "Войти"}
@@ -1118,8 +1157,10 @@ function Auth({ register, onLogin }) {
             </p>
           )}
         </Form>
-        <SocialButtons onLogin={onLogin}/>
-        {location.hash.includes('oauth_error') && <ErrorBox text="Вход через соцсеть не завершён. Повторите попытку или используйте email. Если этот email уже зарегистрирован, войдите паролем и подключите соцсеть в профиле."/>}
+        <SocialButtons onLogin={onLogin} />
+        {location.hash.includes("oauth_error") && (
+          <ErrorBox text="Вход через соцсеть не завершён. Повторите попытку или используйте email. Если этот email уже зарегистрирован, войдите паролем и подключите соцсеть в профиле." />
+        )}
         <p className="auth-switch">
           {register ? "Уже есть аккаунт? " : "Нет аккаунта? "}
           <a href={register ? "#/login" : "#/register"}>
@@ -1130,19 +1171,112 @@ function Auth({ register, onLogin }) {
     </div>
   );
 }
-function SocialExchange({onLogin}) {
-  const [error,setError]=useState('');
-  useEffect(()=>{api('auth/exchange/',{method:'POST'}).then(async t=>{sessionStorage.setItem('access',t.access);sessionStorage.setItem('refresh',t.refresh);if(location.hash.includes('stats=partial'))sessionStorage.setItem('stats-warning','true');onLogin(await api('me/'))}).catch(e=>setError(e.message))},[]);
-  return <div className="panel narrow"><h2>Подключаем аккаунт</h2>{error?<ErrorBox text={error}/>:<Loading/>}</div>;
+function SocialExchange({ onLogin }) {
+  const [error, setError] = useState("");
+  useEffect(() => {
+    api("auth/exchange/", { method: "POST" })
+      .then(async (t) => {
+        sessionStorage.setItem("access", t.access);
+        sessionStorage.setItem("refresh", t.refresh);
+        if (location.hash.includes("stats=partial"))
+          sessionStorage.setItem("stats-warning", "true");
+        onLogin(await api("me/"));
+      })
+      .catch((e) => setError(e.message));
+  }, []);
+  return (
+    <div className="panel narrow">
+      <h2>Подключаем аккаунт</h2>
+      {error ? <ErrorBox text={error} /> : <Loading />}
+    </div>
+  );
 }
 
-function SocialButtons({onLogin,connect=false}) {
-  const {data}=useLoad('options/');const [error,setError]=useState('');const target=useRef(null);
-  const google=async provider=>{try{const d=await api('auth/google/start/',{method:'POST',body:{provider}});location.assign(d.authorization_url)}catch(e){setError(e.message)}};
-  const telegram=async()=>{try{const d=await api('auth/telegram/start/',{method:'POST'});window.bloggerTelegramLogin=async auth=>{try{const t=await api('auth/telegram/login/',{method:'POST',body:{auth,nonce:d.nonce}});sessionStorage.setItem('access',t.access);sessionStorage.setItem('refresh',t.refresh);onLogin(await api('me/'))}catch(e){setError(e.message)}};target.current.replaceChildren();const script=document.createElement('script');script.src='https://telegram.org/js/telegram-widget.js?22';script.async=true;script.dataset.telegramLogin=d.bot_name;script.dataset.size='large';script.dataset.onauth='bloggerTelegramLogin(user)';target.current.appendChild(script)}catch(e){setError(e.message)}};
-  useEffect(()=>()=>{delete window.bloggerTelegramLogin},[]);
-  if(!data?.social_providers?.google&&!data?.social_providers?.telegram)return null;
-  return <div className="social-buttons"><p className="help">{connect?'Подключить статистику и вход':'Для блогеров — вход через соцсеть'}</p>{data.social_providers.google&&<><button type="button" className="button secondary" onClick={()=>google('google')}>Google</button><button type="button" className="button secondary" onClick={()=>google('youtube')}>YouTube + статистика</button></>}{data.social_providers.telegram&&!connect&&<button type="button" className="button secondary" onClick={telegram}>Telegram</button>}<div ref={target}/><ErrorBox text={error}/></div>;
+function SocialButtons({ onLogin, connect = false }) {
+  const { data } = useLoad("options/");
+  const [error, setError] = useState("");
+  const target = useRef(null);
+  const google = async (provider) => {
+    try {
+      const d = await api("auth/google/start/", {
+        method: "POST",
+        body: { provider },
+      });
+      location.assign(d.authorization_url);
+    } catch (e) {
+      setError(e.message);
+    }
+  };
+  const telegram = async () => {
+    try {
+      const d = await api("auth/telegram/start/", { method: "POST" });
+      window.bloggerTelegramLogin = async (auth) => {
+        try {
+          const t = await api("auth/telegram/login/", {
+            method: "POST",
+            body: { auth, nonce: d.nonce },
+          });
+          sessionStorage.setItem("access", t.access);
+          sessionStorage.setItem("refresh", t.refresh);
+          onLogin(await api("me/"));
+        } catch (e) {
+          setError(e.message);
+        }
+      };
+      target.current.replaceChildren();
+      const script = document.createElement("script");
+      script.src = "https://telegram.org/js/telegram-widget.js?22";
+      script.async = true;
+      script.dataset.telegramLogin = d.bot_name;
+      script.dataset.size = "large";
+      script.dataset.onauth = "bloggerTelegramLogin(user)";
+      target.current.appendChild(script);
+    } catch (e) {
+      setError(e.message);
+    }
+  };
+  useEffect(
+    () => () => {
+      delete window.bloggerTelegramLogin;
+    },
+    [],
+  );
+  if (!data?.social_providers?.google && !data?.social_providers?.telegram)
+    return null;
+  return (
+    <div className="social-buttons">
+      <p className="help">
+        {connect
+          ? "Подключить статистику и вход"
+          : "Для блогеров — вход через соцсеть"}
+      </p>
+      {data.social_providers.google && (
+        <>
+          <button
+            type="button"
+            className="button secondary"
+            onClick={() => google("google")}
+          >
+            Google
+          </button>
+          <button
+            type="button"
+            className="button secondary"
+            onClick={() => google("youtube")}
+          >
+            YouTube + статистика
+          </button>
+        </>
+      )}
+      {data.social_providers.telegram && !connect && (
+        <button type="button" className="button secondary" onClick={telegram}>
+          Telegram
+        </button>
+      )}
+      <div ref={target} />
+      <ErrorBox text={error} />
+    </div>
+  );
 }
 
 function Verify({ route }) {
@@ -1184,7 +1318,12 @@ function BloggerDetail({ id, user }) {
               <span className="cover-circle" />
             </div>
             <div className="profile-info">
-              <Avatar name={b.display_name} id={b.id} size="huge" src={b.avatar_url}/>
+              <Avatar
+                name={b.display_name}
+                id={b.id}
+                size="huge"
+                src={b.avatar_url}
+              />
               <Badge b={b} />
               <h1>{b.display_name}</h1>
               <div className="muted">
@@ -1349,8 +1488,33 @@ function BloggerDetail({ id, user }) {
   );
 }
 
+function Pager({ data, page, setPage }) {
+  if (!data || data.count <= 24) return null;
+  return (
+    <div className="pagination">
+      <button
+        aria-label="Предыдущая страница"
+        disabled={!data.previous}
+        onClick={() => setPage((p) => p - 1)}
+      >
+        <ChevronLeft size={17} />
+      </button>
+      <span>
+        Страница {page} из {Math.ceil(data.count / 24)}
+      </span>
+      <button
+        aria-label="Следующая страница"
+        disabled={!data.next}
+        onClick={() => setPage((p) => p + 1)}
+      >
+        <ChevronRight size={17} />
+      </button>
+    </div>
+  );
+}
 function ChatList() {
-  const { data, error, loading } = useLoad("proposals/");
+  const [page, setPage] = useState(1);
+  const { data, error, loading } = useLoad("proposals/?page=" + page);
   return (
     <>
       <PageHead
@@ -1397,6 +1561,7 @@ function ChatList() {
           запроса.
         </Empty>
       )}
+      <Pager data={data} page={page} setPage={setPage} />
     </>
   );
 }
@@ -1725,16 +1890,18 @@ function Chat({ id, user, opts }) {
                   <div className="dispute-block">
                     <h3>Спор №{p.dispute.id}</h3>
                     <p>{p.dispute.reason}</p>
-                    <button
-                      className="file-link"
-                      onClick={() =>
-                        downloadFile("evidence", p.dispute.id).catch((e) =>
-                          setActionError(e.message),
-                        )
-                      }
-                    >
-                      Скачать доказательства
-                    </button>
+                    {p.dispute.evidence_name && (
+                      <button
+                        className="file-link"
+                        onClick={() =>
+                          downloadFile("evidence", p.dispute.id).catch((e) =>
+                            setActionError(e.message),
+                          )
+                        }
+                      >
+                        Скачать доказательства
+                      </button>
+                    )}
                     {p.dispute.resolution ? (
                       <p>Решение: {p.dispute.resolution}</p>
                     ) : (
@@ -1817,7 +1984,8 @@ function Chat({ id, user, opts }) {
 }
 
 function Campaigns({ user }) {
-  const { data, error, loading, refresh } = useLoad("campaigns/"),
+  const [page, setPage] = useState(1);
+  const { data, error, loading, refresh } = useLoad("campaigns/?page=" + page),
     [create, setCreate] = useState(false);
   return (
     <>
@@ -1935,6 +2103,7 @@ function Campaigns({ user }) {
             : "Когда появится подходящий проект, вы получите уведомление."}
         </Empty>
       )}
+      <Pager data={data} page={page} setPage={setPage} />
     </>
   );
 }
@@ -2025,8 +2194,13 @@ function Profile({ user, setUser }) {
         {user.user_type === "blogger" && (
           <div className="panel">
             <h2>Публичный профиль</h2>
-            {sessionStorage.getItem('stats-warning')&&<div className="info">Не удалось загрузить всю статистику YouTube. Аккаунт сохранён. Заполните данные вручную или подключите канал повторно позже.</div>}
-          <SocialButtons connect onLogin={setUser}/>
+            {sessionStorage.getItem("stats-warning") && (
+              <div className="info">
+                Не удалось загрузить всю статистику YouTube. Аккаунт сохранён.
+                Заполните данные вручную или подключите канал повторно позже.
+              </div>
+            )}
+            <SocialButtons connect onLogin={setUser} />
             <ErrorBox text={error} />
             {loading ? (
               <Loading />
@@ -2142,7 +2316,17 @@ function ResendEmail({ email }) {
     </>
   );
 }
-function Notifications({ data, refresh }) {
+function Notifications({ data: latest, refresh: refreshHeader }) {
+  const [page, setPage] = useState(1);
+  const result = useLoad(
+    "notifications/?page=" + page,
+    String(latest[0]?.id) + ":" + latest.filter((n) => !n.is_read).length,
+  );
+  const data = rows(result.data);
+  const refresh = () => {
+    result.refresh();
+    refreshHeader();
+  };
   return (
     <>
       <PageHead
@@ -2193,11 +2377,13 @@ function Notifications({ data, refresh }) {
           </Empty>
         )}
       </div>
+      <Pager data={result.data} page={page} setPage={setPage} />
     </>
   );
 }
 function SavedSearches() {
-  const { data, error, loading, refresh } = useLoad("searches/");
+  const [page, setPage] = useState(1);
+  const { data, error, loading, refresh } = useLoad("searches/?page=" + page);
   return (
     <>
       <PageHead
@@ -2240,6 +2426,7 @@ function SavedSearches() {
           )}
         </div>
       )}
+      <Pager data={data} page={page} setPage={setPage} />
     </>
   );
 }

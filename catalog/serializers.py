@@ -175,6 +175,9 @@ class DealSerializer(serializers.ModelSerializer):
 
 class DisputeSerializer(serializers.ModelSerializer):
     evidence = serializers.FileField(write_only=True, required=False, validators=[validate_file])
+    evidence_name = serializers.SerializerMethodField()
+    def get_evidence_name(self, obj) -> str:
+        return Path(obj.evidence.name).name if obj.evidence else ''
     class Meta:
         model = Dispute
         fields = '__all__'

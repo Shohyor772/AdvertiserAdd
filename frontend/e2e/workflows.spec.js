@@ -38,8 +38,12 @@ test("catalog desktop and mobile, filters, empty state, detail", async ({
   await expect(
     page.getByRole("heading", { name: "Найдите своего блогера" }),
   ).toBeVisible();
-  await expect(page.locator('.sidebar')).not.toBeInViewport();
-  await page.screenshot({ path: "../tmp/catalog-mobile.png", fullPage: true, animations: 'disabled' });
+  await expect(page.locator(".sidebar")).not.toBeInViewport();
+  await page.screenshot({
+    path: "../tmp/catalog-mobile.png",
+    fullPage: true,
+    animations: "disabled",
+  });
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= window.innerWidth,
@@ -48,6 +52,10 @@ test("catalog desktop and mobile, filters, empty state, detail", async ({
   await page.getByRole("button", { name: "Фильтры", exact: true }).click();
   await expect(page.getByLabel("Город", { exact: true })).toBeVisible();
   expect(errors).toEqual([]);
+  for(const width of [320,768]){
+    await page.setViewportSize({width,height:900});
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBeTruthy();
+  }
 });
 
 test("proposal → counter offer → reserve → revision → acceptance → mutual review", async ({
@@ -99,4 +107,73 @@ test("proposal → counter offer → reserve → revision → acceptance → mut
   await a.screenshot({ path: "../tmp/completed-deal.png", fullPage: true });
   await ad.close();
   await blog.close();
+});
+
+test("file brief → dispute → support message → administrator refund", async ({
+  browser,
+}) => {
+  const ad = await browser.newContext(),
+    blog = await browser.newContext(),
+    admin = await browser.newContext();
+  const a = await ad.newPage(),
+    b = await blog.newPage(),
+    m = await admin.newPage();
+  await login(a, "e2e_ad");
+  await a.locator(".card-name").click();
+  await a
+    .getByLabel("Файл ТЗ (необязательно)")
+    .setInputFiles({
+      name: "brief.txt",
+      mimeType: "text/plain",
+      buffer: Buffer.from("Publish the agreed product link."),
+    });
+  await a.getByRole("button", { name: "Отправить предложение" }).click();
+  await expect(
+    a.getByRole("heading", { name: "Условия интеграции" }),
+  ).toBeVisible();
+  const route = new URL(a.url()).hash;
+  await login(b, "e2e_blogger");
+  await b.goto("/" + route);
+  await b.getByRole("button", { name: "Принять условия" }).click();
+  await a.reload();
+  await a.getByRole("button", { name: "Создать тестовый резерв" }).click();
+  await b.reload();
+  await b
+    .getByLabel("Ссылка на публикацию")
+    .fill("https://t.me/e2e_blogger/disputed");
+  await b.getByRole("button", { name: "Сдать работу" }).click();
+  await a.reload();
+  await a.locator("summary").filter({ hasText: "Открыть спор" }).click();
+  await a.getByLabel("Причина спора").fill("В публикации отсутствует продукт");
+  await a
+    .getByLabel("Доказательства (до 10 МБ)")
+    .setInputFiles({
+      name: "evidence.txt",
+      mimeType: "text/plain",
+      buffer: Buffer.from("Missing product link."),
+    });
+  await a.getByRole("button", { name: "Открыть спор", exact: true }).click();
+  await expect(a.locator(".deal-status")).toContainText("Спор");
+  await expect(
+    a.getByRole("button", { name: "Принять работу", exact: true }),
+  ).toHaveCount(0);
+  await login(m, "e2e_admin");
+  await m.goto("/" + route);
+  await m
+    .getByLabel("Сообщение", { exact: true })
+    .fill("Предоставьте дополнительные материалы в чат.");
+  await m.getByRole("button", { name: "Отправить", exact: true }).click();
+  await expect(m.locator(".messages")).toContainText(
+    "дополнительные материалы",
+  );
+  await m.getByLabel("Решение", { exact: true }).selectOption("advertiser");
+  await m
+    .getByLabel("Обоснование")
+    .fill("Публикация не соответствует согласованному ТЗ");
+  await m.getByRole("button", { name: "Вынести решение" }).click();
+  await expect(m.locator(".deal-status")).toContainText("Возврат");
+  await m.screenshot({ path: "../tmp/arbitration-refund.png", fullPage: true });
+  await ad.close();
+  await blog.close();
+  await admin.close();
 });
