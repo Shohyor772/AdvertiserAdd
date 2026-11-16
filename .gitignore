@@ -115,3 +115,8 @@ build/
 # ============================================
 *.log
 logs/
+# Private database backups and local artifacts
+backups/
+tmp/
+!catalog/static/
+!catalog/static/**
